@@ -791,8 +791,19 @@ function New() {
 	// If we go here,it means $conf->global->TAKEPOS_BAR_RESTAURANT is not defined
 	invoiceid = $("#invoiceid").val();		// This is a hidden field added by invoice.php
 
-	console.log("New with place = <?php echo $place; ?>, js place="+place+", invoiceid="+invoiceid);
+	console.log("New with place = <?php echo $place; ?>, js place="+place+", invoiceid="+invoiceid+" mode="+takeposmode);
 
+	<?php if ($takeposmode === 'achat') { ?>
+	// Mode Achat : pas besoin d'appeler getInvoice (facture fournisseur), on demande confirmation directement
+	var r = confirm('<?php echo $langs->transnoentitiesnoconv("ConfirmDiscardCurrentPurchase"); ?>');
+	if (r) {
+		$("#poslines").load("invoice.php?action=delete&token=<?php echo newToken(); ?>&place=" + place, function () {
+			if (typeof resetEditBar === 'function') resetEditBar();
+		});
+		ClearSearch(false);
+		$("#idcustomer").val("");
+	}
+	<?php } else { ?>
 	$.getJSON('<?php echo DOL_URL_ROOT ?>/takepos/ajax/ajax.php?action=getInvoice&token=<?php echo newToken();?>&id='+invoiceid, function(data) {
 		var r;
 
@@ -803,16 +814,14 @@ function New() {
 		}
 
 		if (r == true) {
-			// Reload section with invoice lines
 			$("#poslines").load("invoice.php?action=delete&token=<?php echo newToken(); ?>&place=" + place, function () {
-				//$('#poslines').scrollTop($('#poslines')[0].scrollHeight);
 				if (typeof resetEditBar === 'function') resetEditBar();
 			});
-
 			ClearSearch(false);
 			$("#idcustomer").val("");
 		}
 	});
+	<?php } ?>
 }
 
 /**

@@ -376,6 +376,11 @@ if (empty($reshook)) {
 					$payment->amounts[$invoice->id] = ($amountofpayment <= 0 || $amountofpayment > $remaintopay) ? $remaintopay : $amountofpayment;
 					$payment->paiementid = $paiementid;
 					$payment->num_payment = $invoice->ref;
+					// Initialize multicurrency arrays to avoid "Undefined array key" warnings in paiementfourn.class.php
+					// The class iterates over amounts[] and reads multicurrency_code[$key] / multicurrency_tx[$key]
+					$payment->multicurrency_code[$invoice->id] = !empty($invoice->multicurrency_code) ? $invoice->multicurrency_code : $conf->currency;
+					$payment->multicurrency_tx[$invoice->id]   = !empty($invoice->multicurrency_tx)   ? $invoice->multicurrency_tx   : 1;
+					$payment->multicurrency_amounts[$invoice->id] = 0; // will be computed by create()
 					if ($pay != "delayed") {
 						$res = $payment->create($user, 1); // 1 = close paid invoices
 						if ($res < 0) {
