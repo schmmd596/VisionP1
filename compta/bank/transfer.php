@@ -274,9 +274,11 @@ print '<script type="text/javascript">
 						$(".amount-mode-cell, .amount-mode-header").hide();
 						$(".type-mode-cell, .type-mode-header").hide();
 						$(".transaction-mode-cell, .transaction-mode-header").show();
+						$("#tr_date_filter_bar").show();
 						$(".multicurrency").hide();
 					} else {
 						$(".transaction-mode-cell, .transaction-mode-header").hide();
+						$("#tr_date_filter_bar").hide();
 						$(".amount-mode-cell, .amount-mode-header").show();
 						$(".type-mode-cell, .type-mode-header").show();
 						init_page(1);
@@ -293,15 +295,23 @@ print '<script type="text/javascript">
 					select.empty().append("<option value=\"\">-- Sélectionner une transaction --</option>");
 					if (!accountId) return;
 
+					var dateFrom = $("#tr_filter_date_from").val();
+					var dateTo   = $("#tr_filter_date_to").val();
+
 					$.ajax({
 						url: "ajax/getbanktransactions.php",
 						type: "POST",
-						data: { account_id: accountId, token: $("input[name=\"token\"]").val() },
+						data: {
+							account_id: accountId,
+							token:      $("input[name=\"token\"]").val(),
+							date_from:  dateFrom,
+							date_to:    dateTo
+						},
 						dataType: "json",
 						success: function(data) {
 							$.each(data, function(idx, t) {
-								var amountStr = t.amount >= 0 ? "+" + t.amount : "" + t.amount;
-								var optLabel = t.date + " | " + t.label + " (" + amountStr + ")";
+								var amountStr = "+" + t.amount;
+								var optLabel  = t.date + " | " + t.label + " (" + amountStr + ")";
 								var opt = $("<option></option>")
 									.val(t.id)
 									.attr("data-amount", t.amount)
@@ -317,6 +327,28 @@ print '<script type="text/javascript">
 						}
 					});
 				}
+
+				/* ---- Reload all visible transaction dropdowns (used when date filter changes) ---- */
+				function reloadAllTransactions() {
+					$(".transaction-select").each(function() {
+						var id = $(this).attr("id"); // e.g. "select1_transaction"
+						var lineIndex = id.replace("select", "").replace("_transaction", "");
+						// find the "from" account for this line
+						var accountId = $("#select" + lineIndex + "_account_from").val();
+						if (!accountId) {
+							// try the select2 hidden input
+							accountId = $("select[name=\"" + lineIndex + "_account_from\"]").val();
+						}
+						if (accountId) {
+							loadTransactions(lineIndex, accountId);
+						}
+					});
+				}
+
+				/* ---- Date filter change triggers reload ---- */
+				$("#tr_filter_date_from, #tr_filter_date_to").on("change", function() {
+					reloadAllTransactions();
+				});
 
 				/* ---- When a transaction is selected: auto-fill label ---- */
 				$(document).on("change", ".transaction-select", function() {
@@ -404,6 +436,15 @@ print '<label style="font-size:1.05em; cursor:pointer;">';
 print '<input type="radio" name="transfer_mode" id="mode_transaction" value="transaction"'.($transfer_mode === 'transaction' ? ' checked' : '').'> ';
 print '<strong>Transaction</strong>';
 print '</label>';
+print '</div>';
+
+// Date filter bar — visible only in Transaction mode
+print '<div id="tr_date_filter_bar" class="transaction-mode-header" style="display:none; margin-bottom:14px; text-align:center;">';
+print '<span style="font-weight:600; margin-right:10px;">Filtrer les transactions :</span>';
+print '<label style="margin-right:6px;">Du</label>';
+print '<input type="date" id="tr_filter_date_from" class="flat" style="margin-right:14px;">';
+print '<label style="margin-right:6px;">Au</label>';
+print '<input type="date" id="tr_filter_date_to" class="flat">';
 print '</div>';
 
 print '<div>';
