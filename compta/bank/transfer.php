@@ -47,6 +47,10 @@ require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
 $langs->loadLangs(array('banks', 'categories', 'multicurrency'));
 
 $action = GETPOST('action', 'aZ09');
+$transfer_mode = GETPOST('transfer_mode', 'aZ09');
+if (empty($transfer_mode)) {
+	$transfer_mode = 'amount';
+}
 
 $hookmanager->initHooks(array('banktransfer'));
 
@@ -95,6 +99,31 @@ if ($action == 'add' && $user->hasRight('banque', 'transfer')) {
 		$accountto[$i] = GETPOSTINT($i.'_account_to');
 		$type[$i] = GETPOSTINT($i.'_type');
 
+		// In transaction mode, fetch amount, type and label from the selected bank transaction
+		if ($transfer_mode == 'transaction') {
+			$transactionid = GETPOSTINT($i.'_transaction_id');
+			if ($transactionid > 0) {
+				$sqltr  = "SELECT b.rowid, b.label, b.amount, b.dateo, b.fk_type FROM ".MAIN_DB_PREFIX."bank b";
+				$sqltr .= " WHERE b.rowid = ".((int) $transactionid);
+				$sqltr .= " AND b.fk_account = ".((int) $accountfrom[$i]);
+				$resqltr = $db->query($sqltr);
+				if ($resqltr && $db->num_rows($resqltr) > 0) {
+					$objtr = $db->fetch_object($resqltr);
+					$amount[$i] = (float) price2num(abs((float) $objtr->amount), 'MT', 2);
+					$type[$i]   = $objtr->fk_type; // use the transaction's own payment type
+					if (empty($label[$i])) {
+						$label[$i] = $objtr->label;
+					}
+					if (empty($dateo[$i])) {
+						$dateo[$i] = $db->jdate($objtr->dateo);
+					}
+				}
+				if ($resqltr) {
+					$db->free($resqltr);
+				}
+			}
+		}
+
 		$tabnum[$i] = 0;
 		if (!empty($label[$i]) || !($amount[$i] <= 0) || !($accountfrom[$i] < 0) || !($accountto[$i]  < 0)) {
 			$tabnum[$i] = 1;
@@ -116,7 +145,7 @@ if ($action == 'add' && $user->hasRight('banque', 'transfer')) {
 				$error++;
 				setEventMessages($langs->trans("ErrorFieldRequired", '#'.$n. ' ' .$langs->transnoentities("TransferTo")), null, 'errors');
 			}
-			if (!$type[$n]) {
+			if ($transfer_mode != 'transaction' && !$type[$n]) {
 				$error++;
 				setEventMessages($langs->trans("ErrorFieldRequired", '#'.$n. ' ' .$langs->transnoentities("Type")), null, 'errors');
 			}
@@ -140,7 +169,8 @@ if ($action == 'add' && $user->hasRight('banque', 'transfer')) {
 			$tmpaccountto = new Account($db);
 			$tmpaccountto->fetch(GETPOSTINT($n.'_account_to'));
 
-			if ($tmpaccountto->currency_code == $tmpaccountfrom->currency_code) {
+			if ($transfer_mode == 'transaction' || $tmpaccountto->currency_code == $tmpaccountfrom->currency_code) {
+				// In transaction mode, always mirror the amount (no multicurrency input)
 				$amountto[$n] = $amount[$n];
 			} else {
 				if (!$amountto[$n]) {
@@ -237,11 +267,81 @@ llxHeader('', $title, $help_url);
 
 print '<script type="text/javascript">
         	$(document).ready(function () {
+
+				/* ---- Transfer mode toggle (Montant / Transaction) ---- */
+				function toggleTransferMode(mode) {
+					if (mode === "transaction") {
+						$(".amount-mode-cell, .amount-mode-header").hide();
+						$(".type-mode-cell, .type-mode-header").hide();
+						$(".transaction-mode-cell, .transaction-mode-header").show();
+						$(".multicurrency").hide();
+					} else {
+						$(".transaction-mode-cell, .transaction-mode-header").hide();
+						$(".amount-mode-cell, .amount-mode-header").show();
+						$(".type-mode-cell, .type-mode-header").show();
+						init_page(1);
+					}
+				}
+
+				$("input[name=\"transfer_mode\"]").change(function() {
+					toggleTransferMode($(this).val());
+				});
+
+				/* ---- AJAX: load transactions for a given bank account ---- */
+				function loadTransactions(lineIndex, accountId) {
+					var select = $("#select" + lineIndex + "_transaction");
+					select.empty().append("<option value=\"\">-- Sélectionner une transaction --</option>");
+					if (!accountId) return;
+
+					$.ajax({
+						url: "ajax/getbanktransactions.php",
+						type: "POST",
+						data: { account_id: accountId, token: $("input[name=\"token\"]").val() },
+						dataType: "json",
+						success: function(data) {
+							$.each(data, function(idx, t) {
+								var amountStr = t.amount >= 0 ? "+" + t.amount : "" + t.amount;
+								var optLabel = t.date + " | " + t.label + " (" + amountStr + ")";
+								var opt = $("<option></option>")
+									.val(t.id)
+									.attr("data-amount", t.amount)
+									.attr("data-label", t.label)
+									.attr("data-date-raw", t.date_raw)
+									.attr("data-date-display", t.date)
+									.text(optLabel);
+								select.append(opt);
+							});
+						},
+						error: function() {
+							console.error("Erreur chargement transactions banque");
+						}
+					});
+				}
+
+				/* ---- When a transaction is selected: auto-fill label ---- */
+				$(document).on("change", ".transaction-select", function() {
+					var name = $(this).attr("id"); // e.g. "select1_transaction"
+					var lineIndex = name.replace("select", "").replace("_transaction", "");
+					var selected = $(this).find("option:selected");
+					var lbl = selected.attr("data-label");
+					if (lbl) {
+						$("input[name=\"" + lineIndex + "_label\"]").val(lbl);
+					}
+				});
+
+				/* ---- Bank account change handler ---- */
     	  		$(".selectbankaccount").change(function() {
-						console.log("We change bank account. We check if currency differs. If yes, we show multicurrency field");
-						i = $(this).attr("name").replace("_account_to", "").replace("_account_from", "");
-						console.log(i);
-						init_page(i);
+					var fieldname = $(this).attr("name");
+					var i = fieldname.replace("_account_to", "").replace("_account_from", "");
+					init_page(i);
+
+					// If in transaction mode and "from" account changed, reload transactions
+					if (fieldname.indexOf("_account_from") !== -1) {
+						var mode = $("input[name=\"transfer_mode\"]:checked").val();
+						if (mode === "transaction") {
+							loadTransactions(i, $(this).val());
+						}
+					}
 				});
 
 				function init_page(i) {
@@ -253,7 +353,6 @@ print '<script type="text/javascript">
 	        			var account2 = $("#select"+index+"_account_to").val();
 						var currencycode1 = $("#select"+index+"_account_from option:selected").attr("data-currency-code");
 						var currencycode2 = $("#select"+index+"_account_to option:selected").attr("data-currency-code");
-						console.log("Set atleast2differentcurrency according to currencycode found for index="+index+" currencycode1="+currencycode1+" currencycode2="+currencycode2);
 
 						atleast2differentcurrency = (currencycode2!==currencycode1 && currencycode1 !== undefined && currencycode2 !== undefined && currencycode2!=="" && currencycode1!=="");
 						if (atleast2differentcurrency) {
@@ -261,25 +360,27 @@ print '<script type="text/javascript">
 						}
 					});
 
-
-					if (atleast2differentcurrency) {
-						console.log("We show multicurrency field");
-        				$(".multicurrency").show();
-        			} else {
-						console.log("We hide multicurrency field");
-						$(".multicurrency").hide();
+					// Only show multicurrency if we are in amount mode
+					var currentMode = $("input[name=\"transfer_mode\"]:checked").val();
+					if (currentMode !== "transaction") {
+						if (atleast2differentcurrency) {
+	        				$(".multicurrency").show();
+	        			} else {
+							$(".multicurrency").hide();
+						}
 					}
 
-					// Show all linew with view=view
+					// Show all lines with view=view
 					$("select").each(function() {
 						if( $(this).attr("view")){
 							$(this).closest("tr").removeClass("hidejs").removeClass("hideobject");
 						}
 					});
-
         		}
 
-				init_page(1);
+				// Initialize on page load
+				var initialMode = $("input[name=\"transfer_mode\"]:checked").val() || "amount";
+				toggleTransferMode(initialMode);
         	});
     		</script>';
 
@@ -293,6 +394,18 @@ print '<form name="add" method="post" action="'.$_SERVER["PHP_SELF"].'">';
 print '<input type="hidden" name="token" value="'.newToken().'">';
 print '<input type="hidden" name="action" value="add">';
 
+// Mode selector: Montant (default) vs Transaction
+print '<div class="center" style="margin-bottom:16px;">';
+print '<label style="margin-right:24px; font-size:1.05em; cursor:pointer;">';
+print '<input type="radio" name="transfer_mode" id="mode_amount" value="amount"'.($transfer_mode !== 'transaction' ? ' checked' : '').'> ';
+print '<strong>'.$langs->trans("Amount").'</strong>';
+print '</label>';
+print '<label style="font-size:1.05em; cursor:pointer;">';
+print '<input type="radio" name="transfer_mode" id="mode_transaction" value="transaction"'.($transfer_mode === 'transaction' ? ' checked' : '').'> ';
+print '<strong>Transaction</strong>';
+print '</label>';
+print '</div>';
+
 print '<div>';
 
 print '<div class="div-table-responsive-no-min">';
@@ -300,11 +413,12 @@ print '<table id="tablemouvbank" class="noborder centpercent">';
 
 print '<tr class="liste_titre">';
 print '<th>'.$langs->trans("TransferFrom").'</th>';
+print '<th class="transaction-mode-header">Transaction</th>';
 print '<th>'.$langs->trans("TransferTo").'</th>';
-print '<th>'.$langs->trans("Type").'</th>';
+print '<th class="type-mode-cell type-mode-header">'.$langs->trans("Type").'</th>';
 print '<th>'.$langs->trans("Date").'</th>';
 print '<th>'.$langs->trans("Description").'</th>';
-print '<th class="right">'.$langs->trans("Amount").'</th>';
+print '<th class="right amount-mode-header">'.$langs->trans("Amount").'</th>';
 print '<td class="hideobject multicurrency right">'.$langs->trans("AmountToOthercurrency").'</td>';
 print '</tr>';
 
@@ -327,18 +441,46 @@ for ($i = 1 ; $i < $MAXLINESFORTRANSFERT; $i++) {
 		$classi .= ' hidejs hideobject';
 	}
 
+	// De (From)
 	print '<tr class="oddeven nowraponall '.$classi.'"><td>';
 	print img_picto('', 'bank_account', 'class="paddingright"');
 	$form->select_comptes(($error ? GETPOSTINT($i.'_account_from') : ''), $i.'_account_from', 0, '', 1, '', isModEnabled('multicurrency') ? 1 : 0, 'minwidth100');
 	print '</td>';
 
+	// Transaction select (visible in "Transaction" mode) — placed between De and Vers
+	print '<td class="transaction-mode-cell">';
+	print '<select name="'.$i.'_transaction_id" id="select'.$i.'_transaction" class="flat minwidth250 transaction-select">';
+	print '<option value="">-- Sélectionner une transaction --</option>';
+	// Re-render options server-side when returning after a validation error
+	if ($error && $transfer_mode === 'transaction' && GETPOSTINT($i.'_account_from') > 0) {
+		$sqltrl  = "SELECT b.rowid, b.label, b.amount, b.dateo FROM ".MAIN_DB_PREFIX."bank b";
+		$sqltrl .= " WHERE b.fk_account = ".((int) GETPOSTINT($i.'_account_from'));
+		$sqltrl .= " ORDER BY b.dateo DESC, b.rowid DESC LIMIT 300";
+		$resqltrl = $db->query($sqltrl);
+		if ($resqltrl) {
+			while ($objtrl = $db->fetch_object($resqltrl)) {
+				$selattr = (GETPOSTINT($i.'_transaction_id') == $objtrl->rowid) ? ' selected' : '';
+				$amtDisplay = ($objtrl->amount >= 0 ? '+' : '').price($objtrl->amount);
+				print '<option value="'.$objtrl->rowid.'"'.$selattr
+					.' data-amount="'.dol_escape_htmltag($objtrl->amount).'"'
+					.' data-label="'.dol_escape_htmltag($objtrl->label).'">';
+				print dol_print_date($db->jdate($objtrl->dateo), 'day').' | '.dol_escape_htmltag($objtrl->label).' ('.$amtDisplay.')';
+				print '</option>';
+			}
+			$db->free($resqltrl);
+		}
+	}
+	print '</select>';
+	print '</td>';
+
+	// Vers (To)
 	print '<td class="nowraponall">';
 	print img_picto('', 'bank_account', 'class="paddingright"');
 	$form->select_comptes(($error ? GETPOSTINT($i.'_account_to') : ''), $i.'_account_to', 0, '', 1, '', isModEnabled('multicurrency') ? 1 : 0, 'minwidth100');
 	print "</td>\n";
 
-	// Payment mode
-	print '<td class="nowraponall">';
+	// Payment mode (hidden in transaction mode — type is taken from the transaction itself)
+	print '<td class="nowraponall type-mode-cell">';
 	$idpaymentmodetransfer = dol_getIdFromCode($db, 'VIR', 'c_paiement');
 	$form->select_types_paiements(($error ? GETPOST($i.'_type', 'aZ09') : $idpaymentmodetransfer), $i.'_type', '', 0, 1, 0, 0, 1, 'minwidth100');
 	print "</td>\n";
@@ -351,10 +493,10 @@ for ($i = 1 ; $i < $MAXLINESFORTRANSFERT; $i++) {
 	// Description
 	print '<td><input name="'.$i.'_label" class="flat quatrevingtpercent selectjs" type="text" value="'.dol_escape_htmltag($label).'"></td>';
 
-	// Amount
-	print '<td class="right"><input name="'.$i.'_amount" class="flat right selectjs" type="text" size="6" value="'.dol_escape_htmltag($amount).'"></td>';
+	// Amount (visible in "Montant" mode only)
+	print '<td class="right amount-mode-cell"><input name="'.$i.'_amount" class="flat right selectjs" type="text" size="6" value="'.dol_escape_htmltag($amount).'"></td>';
 
-	// AmountToOthercurrency
+	// AmountToOthercurrency (Montant mode only)
 	print '<td class="hideobject multicurrency right"><input name="'.$i.'_amountto" class="flat right" type="text" size="6" value="'.dol_escape_htmltag($amountto).'"></td>';
 
 	print '</tr>';
