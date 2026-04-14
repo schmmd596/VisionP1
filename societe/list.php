@@ -367,9 +367,38 @@ $permissiontoadd = $user->hasRight('societe', 'lire');
  * Actions
  */
 
-if ($action == "change" && $user->hasRight('takepos', 'run')) {	// Change customer for TakePOS
+if ($action == "change" && $user->hasRight('takepos', 'run')) {	// Change customer/supplier for TakePOS
 	$idcustomer = GETPOSTINT('idcustomer');
+	$takeposmode_for_change = (!empty($_SESSION['takeposmode'])) ? $_SESSION['takeposmode'] : 'vente';
 
+	if ($takeposmode_for_change === 'achat') {
+		// Achat mode: update supplier on the FactureFournisseur draft
+		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
+		$term_for_change = isset($_SESSION["takeposterminal"]) ? $_SESSION["takeposterminal"] : 1;
+		$achat_session_key_for_change = 'takepos_achat_place_'.$term_for_change.'_'.$place;
+		$achat_prov_ref_for_change    = 'POSACH-'.$term_for_change.'-'.$place;
+
+		$achat_inv_id = !empty($_SESSION[$achat_session_key_for_change]) ? (int) $_SESSION[$achat_session_key_for_change] : 0;
+		if ($achat_inv_id > 0) {
+			$sql = "UPDATE ".MAIN_DB_PREFIX."facture_fourn SET fk_soc=".((int) $idcustomer)." WHERE rowid=".$achat_inv_id." AND fk_statut=0";
+		} else {
+			$sql = "UPDATE ".MAIN_DB_PREFIX."facture_fourn SET fk_soc=".((int) $idcustomer)." WHERE ref='".$db->escape($achat_prov_ref_for_change)."' AND fk_statut=0";
+		}
+		$resql = $db->query($sql); ?>
+		<script>
+		console.log("Reload invoice.php (achat) with place=<?php print $place; ?>");
+		parent.$("#poslines").load("<?php echo DOL_URL_ROOT; ?>/takepos/invoice.php?place=<?php print $place; ?>", function() {
+			<?php if (!$resql) { ?>
+				alert('Error failed to update supplier on draft invoice.');
+			<?php } ?>
+			parent.$.colorbox.close();
+		});
+		</script>
+		<?php
+		exit;
+	}
+
+	// Vente mode: update customer on the Facture draft
 	// Check if draft invoice already exists, if not create it
 	$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."facture where ref='(PROV-POS".$_SESSION["takeposterminal"]."-".$place.")' AND entity IN (".getEntity('invoice').")";
 	$result = $db->query($sql);

@@ -2057,27 +2057,38 @@ $( document ).ready(function() {
 	console.log("Set customer info and sales in header placeid=<?php echo $placeid; ?> status=<?php echo $invoice->statut; ?>");
 
 	<?php
-	$s = $langs->trans("Customer");
-	if ($invoice->id > 0 && ($invoice->socid != getDolGlobalString($constforcompanyid))) {
-		$s = $soc->name;
-		if (getDolGlobalInt('TAKEPOS_CHOOSE_CONTACT')) {
-			$contactids = $invoice->getIdContact('external', 'BILLING');
-			$contactid = $contactids[0];
-			if ($contactid > 0) {
-				$contact = new Contact($db);
-				$contact->fetch($contactid);
-				$s .= " - " . $contact->getFullName($langs);
-			}
+	if ($takeposmode === 'achat') {
+		// Achat mode: show supplier name
+		$s = $langs->trans("Supplier");
+		if ($invoice->id > 0 && $invoice->socid > 0) {
+			$s = $soc->name;
 		}
-	} elseif (getDolGlobalInt("TAKEPOS_NO_GENERIC_THIRDPARTY")) {
-		print '$("#idcustomer").val("");';
+	} else {
+		// Vente mode: show customer name
+		$s = $langs->trans("Customer");
+		if ($invoice->id > 0 && ($invoice->socid != getDolGlobalString($constforcompanyid))) {
+			$s = $soc->name;
+			if (getDolGlobalInt('TAKEPOS_CHOOSE_CONTACT')) {
+				$contactids = $invoice->getIdContact('external', 'BILLING');
+				$contactid = $contactids[0];
+				if ($contactid > 0) {
+					$contact = new Contact($db);
+					$contact->fetch($contactid);
+					$s .= " - " . $contact->getFullName($langs);
+				}
+			}
+		} elseif (getDolGlobalInt("TAKEPOS_NO_GENERIC_THIRDPARTY")) {
+			print '$("#idcustomer").val("");';
+		}
 	}
 	?>
 
 	$("#customerandsales").html('');
 	$("#shoppingcart").html('');
 
-	<?php if (getDolGlobalInt('TAKEPOS_CHOOSE_CONTACT') == 0) { ?>
+	<?php if ($takeposmode === 'achat') { ?>
+		$("#customerandsales").append('<a class="valignmiddle tdoverflowmax100 minwidth100" id="customer" onclick="Fournisseur();" title="<?php print dol_escape_js(dol_escape_htmltag((string) $s)); ?>"><span class="fas fa-truck paddingrightonly"></span><?php print dol_escape_js((string) $s); ?></a>');
+	<?php } elseif (getDolGlobalInt('TAKEPOS_CHOOSE_CONTACT') == 0) { ?>
 		$("#customerandsales").append('<a class="valignmiddle tdoverflowmax100 minwidth100" id="customer" onclick="Customer();" title="<?php print dol_escape_js(dol_escape_htmltag((string) $s)); ?>"><span class="fas fa-building paddingrightonly"></span><?php print dol_escape_js((string) $s); ?></a>');
 	<?php } else { ?>
 		$("#customerandsales").append('<a class="valignmiddle tdoverflowmax300 minwidth100" id="contact" onclick="Contact();" title="<?php print dol_escape_js(dol_escape_htmltag((string) $s)); ?>"><span class="fas fa-building paddingrightonly"></span><?php print dol_escape_js((string) $s); ?></a>');

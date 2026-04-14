@@ -701,6 +701,11 @@ function Customer() {
 	$.colorbox({href:"../societe/list.php?type=t&contextpage=poslist&nomassaction=1&place="+place, width:"90%", height:"80%", transition:"none", iframe:"true", title:"<?php echo $langs->trans("Customer"); ?>"});
 }
 
+function Fournisseur() {
+	console.log("Open box to select supplier place="+place);
+	$.colorbox({href:"../societe/list.php?type=f&contextpage=poslist&nomassaction=1&place="+place, width:"90%", height:"80%", transition:"none", iframe:"true", title:"<?php echo $langs->trans("Supplier"); ?>"});
+}
+
 function Contact() {
 	console.log("Open box to select the contact place="+place);
 	$.colorbox({href:"../contact/list.php?type=c&contextpage=poslist&nomassaction=1&place="+place, width:"90%", height:"80%", transition:"none", iframe:"true", title:"<?php echo $langs->trans("Contact"); ?>"});
