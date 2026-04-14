@@ -45,6 +45,7 @@ if (!defined('NOREQUIREAJAX')) {
 require '../main.inc.php'; // Load $user and permissions
 require_once DOL_DOCUMENT_ROOT.'/core/lib/functions.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 
 global $mysoc;
@@ -70,17 +71,36 @@ if (!$user->hasRight('takepos', 'run')) {
 	accessforbidden();
 }
 
-// get invoice
-$invoice = new Facture($db);
-if ($invoiceid > 0) {
-	$invoice->fetch($invoiceid);
+// Detect mode (vente/achat)
+$takeposmode      = (!empty($_SESSION['takeposmode'])) ? $_SESSION['takeposmode'] : 'vente';
+$takeposterminal  = isset($_SESSION['takeposterminal']) ? $_SESSION['takeposterminal'] : 1;
+$achat_prov_ref   = 'POSACH-'.$takeposterminal.'-'.$place;
+$achat_session_key = 'takepos_achat_place_'.$takeposterminal.'_'.$place;
+
+// Load the correct invoice class depending on mode
+if ($takeposmode === 'achat') {
+	$invoice = new FactureFournisseur($db);
+	if ($invoiceid > 0) {
+		$invoice->fetch($invoiceid);
+	} elseif (!empty($_SESSION[$achat_session_key])) {
+		$ret = $invoice->fetch((int) $_SESSION[$achat_session_key]);
+		if ($ret <= 0) {
+			$invoice->fetch(0, $achat_prov_ref);
+		}
+	} else {
+		$invoice->fetch(0, $achat_prov_ref);
+	}
 } else {
-	$invoice->fetch(0, '(PROV-POS'.$_SESSION['takeposterminal'].'-'.$place.')');
+	$invoice = new Facture($db);
+	if ($invoiceid > 0) {
+		$invoice->fetch($invoiceid);
+	} else {
+		$invoice->fetch(0, '(PROV-POS'.$takeposterminal.'-'.$place.')');
+	}
 }
 
-
 // get default vat rate
-$constforcompanyid = 'CASHDESK_ID_THIRDPARTY'.$_SESSION['takeposterminal'];
+$constforcompanyid = 'CASHDESK_ID_THIRDPARTY'.$takeposterminal;
 $soc = new Societe($db);
 if ($invoice->socid > 0) {
 	$soc->fetch($invoice->socid);
@@ -137,7 +157,7 @@ top_htmlhead('', '', 0, 0, $arrayofjs, $arrayofcss);
 <input type="text" id="desc" name="desc" class="takepospay" style="width:40%;" placeholder="<?php echo $langs->trans('Description'); ?>">
 <?php
 if ($action == "freezone" && $user->hasRight('takepos', 'run')) {
-	echo '<input type="text" id="number" name="number" class="takepospay" style="width:15%;" placeholder="'.$langs->trans(getDolGlobalString("TAKEPOS_CHANGE_PRICE_HT") ? 'AmountHT' : 'AmountTTC').'">';
+	echo '<input type="text" id="number" name="number" class="takepospay" style="width:15%;" placeholder="'.$langs->trans('AmountHT').'">';
 }
 if ($action == "addnote" && $user->hasRight('takepos', 'run')) {
 	echo '<input type="hidden" id="number" name="number" value="'.$idline.'">';

@@ -1188,7 +1188,14 @@ if (empty($reshook)) {
 		$localtax1_tx = get_localtax($tva_tx, 1, $customer, $mysoc, $tva_npr);
 		$localtax2_tx = get_localtax($tva_tx, 2, $customer, $mysoc, $tva_npr);
 
-		$res = $invoice->addline($desc, $number, 1, $tva_tx, $localtax1_tx, $localtax2_tx, 0, 0, '', 0, 0, 0, 0, getDolGlobalInt('TAKEPOS_DISCOUNT_TTC') ? ($number >= 0 ? 'HT' : 'TTC') : (getDolGlobalInt('TAKEPOS_CHANGE_PRICE_HT') ? 'HT' : 'TTC'), $number, 0, -1, 0, '', 0, 0, 0, 0, '', array(), 100, 0, null, 0);
+		// Always use 'HT' so the entered price is stored as-is (no TTC→HT rounding/conversion)
+		if ($takeposmode === 'achat') {
+			// FactureFournisseur::addline($desc, $pu, $txtva, $txlocaltax1, $txlocaltax2, $qty, $fk_product, $remise_percent, ..., $price_base_type, ...)
+			$res = $invoice->addline($desc, $number, $tva_tx, $localtax1_tx, $localtax2_tx, 1, 0, 0, 0, 0, 0, 0, 'HT', 0);
+		} else {
+			// Facture::addline($desc, $pu_ht, $qty, $tva_tx, ..., $price_base_type, $pu_ttc, ...)
+			$res = $invoice->addline($desc, $number, 1, $tva_tx, $localtax1_tx, $localtax2_tx, 0, 0, '', 0, 0, 0, 0, 'HT', $number, 0, -1, 0, '', 0, 0, 0, 0, '', array(), 100, 0, null, 0);
+		}
 		if ($res < 0) {
 			dol_htmloutput_errors($invoice->error, $invoice->errors, 1);
 		}
