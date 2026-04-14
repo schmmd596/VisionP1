@@ -721,35 +721,93 @@ if (empty($reshook)) {
 
 	// Achat history: output a mini list of recent supplier invoices and exit
 	if ($action == 'achat_history' && $user->hasRight('takepos', 'run')) {
-		$sql = "SELECT f.rowid, f.ref, f.datef, f.total_ttc, f.fk_statut, s.nom as supplier";
+		// --- Filters from GET parameters ---
+		$filter_ref    = GETPOST('filter_ref', 'alpha');
+		$filter_soc    = GETPOST('filter_soc', 'alpha');
+		$filter_status = GETPOST('filter_status', 'int');
+		$filter_date1  = GETPOST('filter_date1', 'alpha');
+		$filter_date2  = GETPOST('filter_date2', 'alpha');
+
+		$sql  = "SELECT f.rowid, f.ref, f.datef, f.total_ttc, f.fk_statut, s.nom as supplier";
 		$sql .= " FROM ".MAIN_DB_PREFIX."facture_fourn f";
 		$sql .= " LEFT JOIN ".MAIN_DB_PREFIX."societe s ON s.rowid = f.fk_soc";
 		$sql .= " WHERE f.entity IN (".getEntity('invoice').")";
-		$sql .= " ORDER BY f.rowid DESC LIMIT 50";
+		$sql .= " AND f.fk_statut >= 0";  // only real invoices (exclude PROV)
+		if ($filter_ref)    $sql .= " AND f.ref LIKE '%".$db->escape($filter_ref)."%'";
+		if ($filter_soc)    $sql .= " AND s.nom LIKE '%".$db->escape($filter_soc)."%'";
+		if ($filter_status !== '' && $filter_status >= 0) $sql .= " AND f.fk_statut = ".((int)$filter_status);
+		if ($filter_date1)  $sql .= " AND f.datef >= '".$db->idate(dol_mktime(0, 0, 0, (int)substr($filter_date1, 5, 2), (int)substr($filter_date1, 8, 2), (int)substr($filter_date1, 0, 4)))."'";
+		if ($filter_date2)  $sql .= " AND f.datef <= '".$db->idate(dol_mktime(23, 59, 59, (int)substr($filter_date2, 5, 2), (int)substr($filter_date2, 8, 2), (int)substr($filter_date2, 0, 4)))."'";
+		$sql .= " ORDER BY f.rowid DESC LIMIT 100";
 		$resql = $db->query($sql);
-		echo '<html><head><meta charset="utf-8">';
+
+		echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Historique achats</title>';
 		echo '<link rel="stylesheet" href="css/pos.css.php">';
-		echo '<style>body{font-family:sans-serif;font-size:13px;padding:8px;}';
-		echo 'table{width:100%;border-collapse:collapse;}th,td{padding:6px 8px;border-bottom:1px solid #ddd;text-align:left;}';
-		echo 'tr:hover{background:#f5f5f5;}';
-		echo '.btn-load{background:#e07b39;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;}';
-		echo '.status0{color:#aaa;}.status1{color:#27ae60;}.status2{color:#2980b9;}';
-		echo '</style></head><body>';
-		echo '<h3 style="margin:0 0 10px">'.$langs->trans("SupplierInvoices").'</h3>';
-		echo '<table><tr><th>#</th><th>Référence</th><th>Date</th><th>Fournisseur</th><th>Total TTC</th><th>Statut</th><th></th></tr>';
+		echo '<style>
+		body{font-family:sans-serif;font-size:13px;padding:8px;margin:0;background:#fff;}
+		h3{margin:0 0 8px;font-size:15px;color:#333;}
+		.filter-bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center;}
+		.filter-bar input,.filter-bar select{padding:4px 7px;border:1px solid #ccc;border-radius:4px;font-size:12px;}
+		.filter-bar label{font-size:11px;color:#555;margin-bottom:2px;}
+		.filter-group{display:flex;flex-direction:column;}
+		.btn-filter{background:#555;color:#fff;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;}
+		.btn-reset{background:#aaa;color:#fff;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:12px;}
+		table{width:100%;border-collapse:collapse;}
+		th{background:#f0f0f0;font-size:12px;font-weight:600;}
+		th,td{padding:6px 8px;border-bottom:1px solid #e0e0e0;text-align:left;white-space:nowrap;}
+		tr:hover td{background:#fafafa;}
+		.btn-load{background:#e07b39;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;}
+		.s0{color:#aaa;} .s1{color:#27ae60;font-weight:600;} .s2{color:#2980b9;font-weight:600;}
+		</style></head><body>';
+
+		echo '<h3>'.$langs->trans("SupplierInvoices").'</h3>';
+
+		// --- Filter bar ---
+		$self_url = 'invoice.php?action=achat_history&token='.newToken().'&place='.$place;
+		echo '<form method="GET" action="invoice.php">';
+		echo '<input type="hidden" name="action" value="achat_history">';
+		echo '<input type="hidden" name="token" value="'.newToken().'">';
+		echo '<input type="hidden" name="place" value="'.dol_escape_htmltag($place).'">';
+		echo '<div class="filter-bar">';
+		echo '<div class="filter-group"><label>Référence</label><input type="text" name="filter_ref" value="'.dol_escape_htmltag($filter_ref).'" placeholder="Nº facture"></div>';
+		echo '<div class="filter-group"><label>Fournisseur</label><input type="text" name="filter_soc" value="'.dol_escape_htmltag($filter_soc).'" placeholder="Nom fournisseur"></div>';
+		echo '<div class="filter-group"><label>Du</label><input type="date" name="filter_date1" value="'.dol_escape_htmltag($filter_date1).'"></div>';
+		echo '<div class="filter-group"><label>Au</label><input type="date" name="filter_date2" value="'.dol_escape_htmltag($filter_date2).'"></div>';
+		echo '<div class="filter-group"><label>Statut</label><select name="filter_status">';
+		echo '<option value="-1"'.($filter_status === '' || $filter_status < 0 ? ' selected' : '').'>Tous</option>';
+		echo '<option value="0"'.($filter_status == 0 ? ' selected' : '').'>Brouillon</option>';
+		echo '<option value="1"'.($filter_status == 1 ? ' selected' : '').'>Validée</option>';
+		echo '<option value="2"'.($filter_status == 2 ? ' selected' : '').'>Payée</option>';
+		echo '</select></div>';
+		echo '<div class="filter-group" style="justify-content:flex-end;padding-top:14px;">';
+		echo '<button type="submit" class="btn-filter">Filtrer</button>&nbsp;';
+		echo '<a href="invoice.php?action=achat_history&token='.newToken().'&place='.urlencode($place).'" style="text-decoration:none;"><button type="button" class="btn-reset">✕</button></a>';
+		echo '</div>';
+		echo '</div></form>';
+
+		// --- Table ---
+		echo '<table>';
+		echo '<tr><th>#</th><th>Référence</th><th>Date</th><th>Fournisseur</th><th>Total TTC</th><th>Statut</th><th></th></tr>';
 		if ($resql) {
+			$nb = 0;
 			while ($obj = $db->fetch_object($resql)) {
+				$nb++;
+				// Decode any HTML entities that Dolibarr may have stored in database (e.g. &eacute; → é)
+				$supplier_name = html_entity_decode((string)$obj->supplier, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 				$statuslabel = $obj->fk_statut == 0 ? 'Brouillon' : ($obj->fk_statut == 1 ? 'Validée' : 'Payée');
-				$statusclass = 'status'.$obj->fk_statut;
+				$statusclass = 's'.$obj->fk_statut;
 				echo '<tr>';
 				echo '<td>'.((int)$obj->rowid).'</td>';
-				echo '<td>'.htmlspecialchars($obj->ref).'</td>';
+				echo '<td>'.htmlspecialchars($obj->ref, ENT_QUOTES, 'UTF-8').'</td>';
 				echo '<td>'.dol_print_date($db->jdate($obj->datef), 'day').'</td>';
-				echo '<td>'.htmlspecialchars((string)$obj->supplier).'</td>';
+				echo '<td>'.htmlspecialchars($supplier_name, ENT_QUOTES, 'UTF-8').'</td>';
 				echo '<td>'.price($obj->total_ttc).'</td>';
 				echo '<td class="'.$statusclass.'">'.$statuslabel.'</td>';
 				echo '<td><button class="btn-load" onclick="loadInvoice('.((int)$obj->rowid).')">Ouvrir</button></td>';
 				echo '</tr>';
+			}
+			if ($nb == 0) {
+				echo '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:20px;">Aucune facture trouvée</td></tr>';
 			}
 		}
 		echo '</table>';
@@ -763,6 +821,7 @@ if (empty($reshook)) {
 		echo '</body></html>';
 		exit;
 	}
+
 
 	// If we add a line and no invoice yet, we create the invoice
 	if (($action == "addline" || $action == "freezone") && $placeid == 0 && ($user->hasRight('takepos', 'run') || defined('INCLUDE_PHONEPAGE_FROM_PUBLIC_PAGE'))) {
