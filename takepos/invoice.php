@@ -1234,7 +1234,13 @@ if (empty($reshook)) {
 					$db->rollback();
 				}
 
-				$invoice->fetch($placeid);
+				if ($takeposmode === 'achat') {
+					// Reinitialize object so lines array is empty — the invoice was deleted from DB
+					$invoice = new $invoiceclass($db);
+					$placeid = 0;
+				} else {
+					$invoice->fetch($placeid);
+				}
 			}
 		}
 	}
