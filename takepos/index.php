@@ -773,6 +773,16 @@ function FreeZone() {
 	$.colorbox({href:"freezone.php?action=freezone&token=<?php echo newToken(); ?>&place="+place+"&invoiceid="+invoiceid, width:"80%", height:"40%", transition:"none", iframe:"true", title:"<?php echo $langs->trans("FreeZone"); ?>"});
 }
 
+function Basculer() {
+	invoiceid = $("#invoiceid").val();
+	if (!invoiceid || invoiceid <= 0) {
+		alert("<?php echo dol_escape_js($langs->trans('NoInvoice')); ?>");
+		return;
+	}
+	console.log("Open basculer popup invoiceid="+invoiceid+" place="+place);
+	$.colorbox({href:"basculer.php?place="+place+"&invoiceid="+invoiceid+"&token=<?php echo newToken(); ?>", width:"60%", height:"50%", transition:"none", iframe:"true", title:"Basculer"});
+}
+
 function TakeposOrderNotes() {
 	console.log("Open box to order notes");
 	ModalBox('ModalNote');
@@ -1588,6 +1598,14 @@ if (getDolGlobalString('TAKEPOS_BAR_RESTAURANT')) {
 // Last action that close the sell (payments)
 $paymentLabel = ($takeposmode === 'achat') ? $langs->trans("ValidateBill") : $langs->trans("Payment");
 $menus[$r++] = array('title' => '<span class="far fa-money-bill-alt paddingrightonly"></span><div class="trunc">'.$paymentLabel.'</div>', 'action' => 'CloseBill();');
+
+// Achat mode only: Basculer (validate supplier invoice + create sale invoice)
+if ($takeposmode === 'achat') {
+	$menus[$r++] = array(
+		'title'  => '<span class="fas fa-exchange-alt paddingrightonly"></span><div class="trunc">Basculer</div>',
+		'action' => 'Basculer();',
+	);
+}
 if (getDolGlobalString('TAKEPOS_DIRECT_PAYMENT')) {
 	$menus[$r++] = array('title' => '<span class="far fa-money-bill-alt paddingrightonly"></span><div class="trunc">'.$langs->trans("DirectPayment").' <span class="opacitymedium">('.$langs->trans("Cash").')</span></div>', 'action' => 'DirectPayment();');
 }

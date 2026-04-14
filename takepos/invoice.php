@@ -1202,6 +1202,177 @@ if (empty($reshook)) {
 		$invoice->fetch($placeid);
 	}
 
+	// Basculer: validate supplier invoice (no stock), add stock IN, create customer invoice, switch to vente mode
+	if ($action == "basculer" && $takeposmode === 'achat'
+		&& $user->hasRight('fournisseur', 'facture', 'creer') && $user->hasRight('facture', 'creer')) {
+
+		$basculer_pay = $paycode; // already normalized: 'LIQ', 'CB', 'CHQ', 'delayed', ...
+		$bankaccount  = 0;
+		if ($basculer_pay == 'LIQ') {
+			$bankaccount = getDolGlobalInt('CASHDESK_ID_BANKACCOUNT_CASH'.$term);
+		} elseif ($basculer_pay == 'CHQ') {
+			$bankaccount = getDolGlobalInt('CASHDESK_ID_BANKACCOUNT_CHEQUE'.$term);
+		} elseif ($basculer_pay && $basculer_pay != 'delayed') {
+			$bankaccount = getDolGlobalInt('CASHDESK_ID_BANKACCOUNT_'.$basculer_pay.$term);
+		}
+
+		$now = dol_now();
+		$db->begin();
+		$basculer_error = 0;
+
+		// --- Step 1: validate supplier invoice WITHOUT stock change ---
+		if (count($invoice->lines) == 0) {
+			$basculer_error++;
+			dol_htmloutput_errors($langs->trans("NoLinesToBill", "TakePos"), array(), 1);
+		}
+
+		if (!$basculer_error) {
+			// Reset ref so validate() calls getNextNumRef() for a sequential ref
+			$invoice->ref = '(PROV'.$invoice->id.')';
+			$res = $invoice->validate($user); // no warehouse => no stock change
+			if ($res < 0) {
+				$basculer_error++;
+				dol_htmloutput_errors($invoice->error, $invoice->errors, 1);
+			}
+		}
+
+		// --- Step 2: record payment for supplier invoice ---
+		if (!$basculer_error) {
+			$remaintopay = $invoice->getRemainToPay();
+			if ($remaintopay > 0) {
+				if ($basculer_pay != 'delayed') {
+					$payment = new PaiementFourn($db);
+					$payment->datepaye = $now;
+					$payment->fk_account = $bankaccount;
+					$payment->amounts[$invoice->id] = $remaintopay;
+					$payment->paiementid = $paiementid;
+					$payment->num_payment = $invoice->ref;
+					$payment->multicurrency_code[$invoice->id] = !empty($invoice->multicurrency_code) ? $invoice->multicurrency_code : $conf->currency;
+					$payment->multicurrency_tx[$invoice->id]   = !empty($invoice->multicurrency_tx)   ? $invoice->multicurrency_tx   : 1;
+					$payment->multicurrency_amounts[$invoice->id] = 0;
+					$res = $payment->create($user, 1);
+					if ($res < 0) {
+						$basculer_error++;
+						dol_htmloutput_errors($langs->trans('Error').' '.$payment->error, $payment->errors, 1);
+					} else {
+						$res = $payment->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $bankaccount, '', '');
+						if ($res < 0) {
+							$basculer_error++;
+							dol_htmloutput_errors($langs->trans('Error').' '.$payment->error, $payment->errors, 1);
+						}
+					}
+					if (!$basculer_error) {
+						$invoice->setPaid($user);
+						$invoice->setPaymentMethods($paiementid);
+					}
+				} elseif (getDolGlobalInt("TAKEPOS_DELAYED_TERMS")) {
+					$invoice->setPaymentTerms(getDolGlobalInt("TAKEPOS_DELAYED_TERMS"));
+				}
+			}
+		}
+
+		// --- Step 3: add stock IN for each product line ---
+		if (!$basculer_error && isModEnabled('stock')) {
+			require_once DOL_DOCUMENT_ROOT.'/product/stock/class/mouvementstock.class.php';
+			$constantforkey = 'CASHDESK_ID_WAREHOUSE'.$term;
+			$warehouseid    = getDolGlobalInt($constantforkey);
+			$labelmouv      = 'TakePOS Basculer - '.$invoice->ref;
+			$inventorycode  = dol_print_date($now, 'dayhourlog');
+
+			if ($warehouseid > 0) {
+				foreach ($invoice->lines as $line) {
+					if ($line->fk_product > 0 && $line->qty > 0) {
+						$wh = ($line->fk_warehouse ? $line->fk_warehouse : $warehouseid);
+						$mouvP = new MouvementStock($db);
+						$mouvP->setOrigin($invoice->element, $invoice->id);
+						$res = $mouvP->reception($user, $line->fk_product, $wh, $line->qty, $line->subprice, $labelmouv, '', '', '', '', 0, $inventorycode);
+						if ($res < 0) {
+							dol_htmloutput_errors($mouvP->error, $mouvP->errors, 1);
+							$basculer_error++;
+						}
+					}
+				}
+			}
+		}
+
+		// --- Step 4: create customer invoice (Facture) with same lines ---
+		if (!$basculer_error) {
+			$newInvoice = new Facture($db);
+			$constforcompanyid = 'CASHDESK_ID_THIRDPARTY'.$term;
+			$newInvoice->socid        = getDolGlobalInt($constforcompanyid);
+			$newInvoice->date         = $now;
+			$newInvoice->module_source = 'takepos';
+			$newInvoice->pos_source   = $term;
+			if (isModEnabled('project') && getDolGlobalInt('CASHDESK_ID_PROJECT'.$term)) {
+				$newInvoice->fk_project = getDolGlobalInt('CASHDESK_ID_PROJECT'.$term);
+			}
+
+			$res = $newInvoice->create($user);
+			if ($res <= 0) {
+				$basculer_error++;
+				dol_htmloutput_errors($newInvoice->error, $newInvoice->errors, 1);
+			} else {
+				// Set provisional ref to the standard TakePos vente format
+				$db->query(
+					"UPDATE ".MAIN_DB_PREFIX."facture SET ref='(PROV-POS".$db->escape($term.'-'.$place).")'"
+					." WHERE rowid=".((int) $newInvoice->id)
+				);
+
+				// Copy lines from supplier invoice to customer invoice
+				foreach ($invoice->lines as $line) {
+					$res = $newInvoice->addline(
+						$line->desc,
+						$line->subprice,   // pu_ht
+						$line->qty,
+						$line->tva_tx,
+						$line->localtax1_tx,
+						$line->localtax2_tx,
+						$line->fk_product,
+						$line->remise_percent,
+						'',                // date_start
+						0, 0, 0, 0,
+						'HT',
+						$line->subprice,   // pu_ttc (ignored when HT)
+						0,
+						-1,                // rang
+						0,
+						'',
+						0, 0, 0, 0,
+						'',
+						array(),
+						100,
+						0,
+						null,
+						0
+					);
+					if ($res < 0) {
+						$basculer_error++;
+						dol_htmloutput_errors($newInvoice->error, $newInvoice->errors, 1);
+						break;
+					}
+				}
+
+				if (!$basculer_error) {
+					$newInvoice->fetch($newInvoice->id);
+					// Switch context so the page renders the new vente invoice
+					$invoice    = $newInvoice;
+					$placeid    = $newInvoice->id;
+					$invoiceclass = 'Facture';
+					$takeposmode  = 'vente';
+				}
+			}
+		}
+
+		// --- Step 5: switch session to vente mode ---
+		if (!$basculer_error) {
+			$_SESSION['takeposmode'] = 'vente';
+			unset($_SESSION[$achat_session_key]);
+			$db->commit();
+		} else {
+			$db->rollback();
+		}
+	}
+
 	if ($action == "addnote" && ($user->hasRight('takepos', 'run') || defined('INCLUDE_PHONEPAGE_FROM_PUBLIC_PAGE'))) {
 		$desc = GETPOST('addnote', 'alpha');
 		if ($idline == 0) {
