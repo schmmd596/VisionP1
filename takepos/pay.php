@@ -42,7 +42,9 @@ if (!defined('NOREQUIREHTML')) {
 // Load Dolibarr environment
 require '../main.inc.php'; // Load $user and permissions
 require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/stripe/class/stripe.class.php';
+$takeposmode = (!empty($_SESSION['takeposmode'])) ? $_SESSION['takeposmode'] : 'vente';
 
 
 /**
@@ -111,10 +113,15 @@ if (isModEnabled('stripe')) {
 	$stripe = new Stripe($db);
 	$stripeacc = $stripe->getStripeAccount($service); // Get Stripe OAuth connect account (no remote access to Stripe here)
 
-	include_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
-	$invoicetmp = new Facture($db);
+	// Load the correct invoice class depending on mode to avoid fetching a supplier invoice as customer invoice
+	if ($takeposmode === 'achat') {
+		$invoicetmp = new FactureFournisseur($db);
+	} else {
+		include_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+		$invoicetmp = new Facture($db);
+	}
 	$invoicetmp->fetch($invoiceid);
-	$stripecu = $stripe->getStripeCustomerAccount($invoicetmp->socid, $servicestatus, $site_account); // Get remote Stripe customer 'cus_...' (no remote access to Stripe here)
+	$stripecu = $stripe->getStripeCustomerAccount((int) $invoicetmp->socid, $servicestatus, $site_account); // Get remote Stripe customer 'cus_...' (no remote access to Stripe here)
 	$keyforstripeterminalbank = "CASHDESK_ID_BANKACCOUNT_STRIPETERMINAL".(empty($_SESSION['takeposterminal']) ? '' : $_SESSION['takeposterminal']);
 
 	$usestripeterminals = getDolGlobalString('STRIPE_LOCATION');
@@ -162,22 +169,45 @@ if (isModEnabled('stripe') && isset($keyforstripeterminalbank) && (!getDolGlobal
 	dol_htmloutput_mesg($langs->trans('YouAreCurrentlyInSandboxMode', 'Stripe'), [], 'warning', 1);
 }
 
-$invoice = new Facture($db);
-if ($invoiceid > 0) {
-	$invoice->fetch($invoiceid);
-} else {
-	$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."facture";
-	$sql .= " WHERE entity IN (".getEntity('invoice').")";
-	$sql .= " AND ref = '(PROV-POS".$_SESSION["takeposterminal"]."-".$place.")'";
-	$resql = $db->query($sql);
-	$obj = $db->fetch_object($resql);
-	if ($obj) {
-		$invoiceid = $obj->rowid;
-	}
-	if (!$invoiceid) {
-		$invoiceid = 0; // Invoice does not exist yet
-	} else {
+if ($takeposmode === 'achat') {
+	$invoice = new FactureFournisseur($db);
+	$term_pay = empty($_SESSION["takeposterminal"]) ? 1 : $_SESSION["takeposterminal"];
+	$achat_prov_ref_pay = 'POSACH-'.$term_pay.'-'.$place;
+	$achat_session_key_pay = 'takepos_achat_place_'.$term_pay.'_'.$place;
+	if ($invoiceid > 0) {
 		$invoice->fetch($invoiceid);
+	} elseif (!empty($_SESSION[$achat_session_key_pay])) {
+		$invoice->fetch((int) $_SESSION[$achat_session_key_pay]);
+		$invoiceid = $invoice->id;
+	} else {
+		$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."facture_fourn";
+		$sql .= " WHERE entity IN (".getEntity('invoice').")";
+		$sql .= " AND ref = '".$db->escape($achat_prov_ref_pay)."'";
+		$resql = $db->query($sql);
+		$obj = ($resql ? $db->fetch_object($resql) : null);
+		$invoiceid = ($obj ? (int) $obj->rowid : 0);
+		if ($invoiceid) {
+			$invoice->fetch($invoiceid);
+		}
+	}
+} else {
+	$invoice = new Facture($db);
+	if ($invoiceid > 0) {
+		$invoice->fetch($invoiceid);
+	} else {
+		$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."facture";
+		$sql .= " WHERE entity IN (".getEntity('invoice').")";
+		$sql .= " AND ref = '(PROV-POS".$_SESSION["takeposterminal"]."-".$place.")'";
+		$resql = $db->query($sql);
+		$obj = $db->fetch_object($resql);
+		if ($obj) {
+			$invoiceid = $obj->rowid;
+		}
+		if (!$invoiceid) {
+			$invoiceid = 0;
+		} else {
+			$invoice->fetch($invoiceid);
+		}
 	}
 }
 

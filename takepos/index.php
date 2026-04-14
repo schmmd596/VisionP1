@@ -47,7 +47,6 @@ require_once DOL_DOCUMENT_ROOT.'/core/class/html.formother.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/hookmanager.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/date.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/categories/class/categorie.class.php';
-require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 
 /**
@@ -59,12 +58,35 @@ require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
  * @var User $user
  */
 
-$langs->loadLangs(array("bills", "orders", "commercial", "cashdesk", "receiptprinter", "banks"));
+$langs->loadLangs(array("bills", "orders", "commercial", "cashdesk", "receiptprinter", "banks", "suppliers"));
 
 $place = (GETPOST('place', 'aZ09') ? GETPOST('place', 'aZ09') : 0); // $place is id of table for Bar or Restaurant or multiple sales
 $action = GETPOST('action', 'aZ09');
 $setterminal = GETPOSTINT('setterminal');
 $setcurrency = GETPOST('setcurrency', 'aZ09');
+
+// Switch Vente / Achat
+$setmode = GETPOST('setmode', 'alpha');
+if (in_array($setmode, array('vente', 'achat'))) {
+	if ($setmode !== (!empty($_SESSION['takeposmode']) ? $_SESSION['takeposmode'] : 'vente')) {
+		// Mode changed — clear the achat session invoice key so we start fresh
+		$term_for_clear = isset($_SESSION["takeposterminal"]) ? $_SESSION["takeposterminal"] : 1;
+		foreach ($_SESSION as $k => $v) {
+			if (strpos($k, 'takepos_achat_place_') === 0) {
+				unset($_SESSION[$k]);
+			}
+		}
+	}
+	$_SESSION['takeposmode'] = $setmode;
+}
+$takeposmode = (!empty($_SESSION['takeposmode'])) ? $_SESSION['takeposmode'] : 'vente';
+
+// Chargement conditionnel de la classe facture
+if ($takeposmode === 'achat') {
+	require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
+} else {
+	require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+}
 
 $hookmanager->initHooks(array('takeposfrontend'));
 if (empty($_SESSION["takeposterminal"])) {
@@ -190,6 +212,7 @@ var pageproducts=0;
 var pagecategories=0;
 var pageactions=0;
 var place="<?php echo $place; ?>";
+var takeposmode="<?php echo $takeposmode; ?>";
 var editaction="qty";
 var editnumber="";
 var invoiceid=0;
@@ -685,8 +708,11 @@ function Contact() {
 
 function History()
 {
-	console.log("Open box to select the history");
-	$.colorbox({href:"../compta/facture/list.php?contextpage=poslist", width:"90%", height:"80%", transition:"none", iframe:"true", title:"<?php echo $langs->trans("History"); ?>"});
+	console.log("Open box to select the history, mode="+takeposmode);
+	var historyUrl = (takeposmode === 'achat')
+		? "invoice.php?action=achat_history&token=<?php echo newToken(); ?>&place="+place
+		: "../compta/facture/list.php?contextpage=poslist";
+	$.colorbox({href:historyUrl, width:"90%", height:"80%", transition:"none", iframe:"true", title:"<?php echo $langs->trans("History"); ?>"});
 }
 
 function Reduction() {
@@ -1290,6 +1316,21 @@ if (!getDolGlobalString('TAKEPOS_HIDE_HEAD_BAR')) {
 				} ?>
 			</div>
 			<div id="topnav-right" class="topnav-right">
+				<!-- Switch Vente / Achat -->
+				<div class="inline-block valignmiddle" style="margin-right:8px;">
+					<div style="display:inline-flex; align-items:center; background:rgba(0,0,0,0.25); border-radius:18px; padding:2px; gap:1px;">
+						<a href="index.php?setmode=vente<?php echo $place ? '&place='.urlencode($place) : ''; ?>"
+						   style="display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:15px; font-size:11px; font-weight:600; text-decoration:none; white-space:nowrap;
+						   <?php echo $takeposmode === 'vente' ? 'background:#5555AA; color:#fff; box-shadow:0 1px 4px rgba(85,85,170,0.5);' : 'color:rgba(255,255,255,0.5);'; ?>">
+							<i class="fa fa-shopping-cart"></i> Vente
+						</a>
+						<a href="index.php?setmode=achat<?php echo $place ? '&place='.urlencode($place) : ''; ?>"
+						   style="display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:15px; font-size:11px; font-weight:600; text-decoration:none; white-space:nowrap;
+						   <?php echo $takeposmode === 'achat' ? 'background:#e07b39; color:#fff; box-shadow:0 1px 4px rgba(224,123,57,0.5);' : 'color:rgba(255,255,255,0.5);'; ?>">
+							<i class="fa fa-truck"></i> Achat
+						</a>
+					</div>
+				</div>
 				<?php
 				$reshook = $hookmanager->executeHooks('takepos_login_block_other');
 				if ($reshook == 0) {  //Search method
@@ -1518,12 +1559,13 @@ if (getDolGlobalString('TAKEPOS_HIDE_HEAD_BAR')) {
 	}
 }
 if (! getDolGlobalString('TAKEPOS_HIDE_HISTORY')) {
-	$menus[$r++] = array('title' => '<span class="fa fa-history paddingrightonly"></span><div class="trunc">'.$langs->trans("History").'</div>', 'action' => 'History();');
+	$historyLabel = ($takeposmode === 'achat') ? $langs->trans("SupplierInvoices") : $langs->trans("History");
+	$menus[$r++] = array('title' => '<span class="fa fa-history paddingrightonly"></span><div class="trunc">'.$historyLabel.'</div>', 'action' => 'History();');
 }
 $menus[$r++] = array('title' => '<span class="fa fa-cube paddingrightonly"></span><div class="trunc">'.$langs->trans("FreeZone").'</div>', 'action' => 'FreeZone();');
 $menus[$r++] = array('title' => '<span class="fa fa-percent paddingrightonly"></span><div class="trunc">'.$langs->trans("InvoiceDiscountShort").'</div>', 'action' => 'Reduction();');
 
-if (!getDolGlobalString('TAKEPOS_NO_SPLIT_SALE')) {
+if (!getDolGlobalString('TAKEPOS_NO_SPLIT_SALE') && $takeposmode !== 'achat') {
 	$menus[$r++] = array('title' => '<span class="fas fa-cut paddingrightonly"></span><div class="trunc">'.$langs->trans("SplitSale").'</div>', 'action' => 'Split();');
 }
 
@@ -1535,7 +1577,8 @@ if (getDolGlobalString('TAKEPOS_BAR_RESTAURANT')) {
 }
 
 // Last action that close the sell (payments)
-$menus[$r++] = array('title' => '<span class="far fa-money-bill-alt paddingrightonly"></span><div class="trunc">'.$langs->trans("Payment").'</div>', 'action' => 'CloseBill();');
+$paymentLabel = ($takeposmode === 'achat') ? $langs->trans("ValidateBill") : $langs->trans("Payment");
+$menus[$r++] = array('title' => '<span class="far fa-money-bill-alt paddingrightonly"></span><div class="trunc">'.$paymentLabel.'</div>', 'action' => 'CloseBill();');
 if (getDolGlobalString('TAKEPOS_DIRECT_PAYMENT')) {
 	$menus[$r++] = array('title' => '<span class="far fa-money-bill-alt paddingrightonly"></span><div class="trunc">'.$langs->trans("DirectPayment").' <span class="opacitymedium">('.$langs->trans("Cash").')</span></div>', 'action' => 'DirectPayment();');
 }

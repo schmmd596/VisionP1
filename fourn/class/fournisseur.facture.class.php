@@ -575,7 +575,7 @@ class FactureFournisseur extends CommonInvoice
 		$sql .= ", fk_fac_rec_source";
 		$sql .= ")";
 		$sql .= " VALUES (";
-		$sql .= "'(PROV)'";
+		$sql .= "CONCAT('(PROV-', CONNECTION_ID(), ')')";
 		$sql .= ", '".$this->db->escape($this->ref_supplier)."'";
 		$sql .= ", '".$this->db->escape($this->ref_ext)."'";
 		$sql .= ", ".((int) $this->entity);

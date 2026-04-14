@@ -51,7 +51,9 @@ if (!defined('INCLUDE_PHONEPAGE_FROM_PUBLIC_PAGE')) {
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/hookmanager.class.php';
 require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
 require_once DOL_DOCUMENT_ROOT.'/compta/paiement/class/paiement.class.php';
+require_once DOL_DOCUMENT_ROOT.'/fourn/class/paiementfourn.class.php';
 require_once DOL_DOCUMENT_ROOT.'/contact/class/contact.class.php';
 /**
  * @var Conf $conf
@@ -163,9 +165,43 @@ if ($paycode) {
 	}
 }
 
-$invoice = new Facture($db);
+// Vente / Achat mode
+$takeposmode = (!empty($_SESSION['takeposmode'])) ? $_SESSION['takeposmode'] : 'vente';
+$invoiceclass = ($takeposmode === 'achat') ? 'FactureFournisseur' : 'Facture';
+
+$invoice = new $invoiceclass($db);
+$achat_prov_ref  = 'POSACH-'.$takeposterminal.'-'.$place;   // stable provisional ref for achat
+$achat_session_key = 'takepos_achat_place_'.$takeposterminal.'_'.$place;
+
+// For achat mode: clean up any stuck (PROV) or (PROV-*) placeholder records (DELETE lines first because of FK)
+// Note: FactureFournisseur::create() now uses CONCAT('(PROV-', CONNECTION_ID(), ')') to avoid unique-key
+// conflicts when two requests create simultaneously. We clean both the old '(PROV)' and new '(PROV-%)' forms.
+if ($takeposmode === 'achat' && $invoiceid <= 0) {
+	$res_prov = $db->query("SELECT rowid FROM ".MAIN_DB_PREFIX."facture_fourn WHERE ref='(PROV)' OR ref LIKE '(PROV-%)'");
+	if ($res_prov) {
+		while ($obj_prov = $db->fetch_object($res_prov)) {
+			$db->query("DELETE FROM ".MAIN_DB_PREFIX."facture_fourn_det WHERE fk_facture_fourn=".((int) $obj_prov->rowid));
+		}
+		$db->query("DELETE FROM ".MAIN_DB_PREFIX."facture_fourn WHERE ref='(PROV)' OR ref LIKE '(PROV-%)'");
+	}
+}
+
 if ($invoiceid > 0) {
 	$ret = $invoice->fetch($invoiceid);
+} elseif ($takeposmode === 'achat') {
+	// Achat: first try session-stored ID, then try the stable provisional ref
+	if (!empty($_SESSION[$achat_session_key])) {
+		$ret = $invoice->fetch((int) $_SESSION[$achat_session_key]);
+		if ($ret <= 0) {
+			unset($_SESSION[$achat_session_key]);  // stale, clear it
+			$ret = $invoice->fetch(0, $achat_prov_ref);
+		}
+	} else {
+		$ret = $invoice->fetch(0, $achat_prov_ref);
+	}
+	if ($ret > 0) {
+		$_SESSION[$achat_session_key] = $invoice->id;  // keep session in sync
+	}
 } else {
 	$ret = $invoice->fetch(0, '(PROV-POS'.$takeposterminal.'-'.$place.')');
 }
@@ -196,7 +232,6 @@ if (isModEnabled('multicurrency') && !empty($_SESSION["takeposcustomercurrency"]
 
 $term = empty($_SESSION["takeposterminal"]) ? 1 : $_SESSION["takeposterminal"];
 
-
 /*
  * Actions
  */
@@ -216,7 +251,8 @@ $printer = null;
 $idoflineadded = 0;
 if (empty($reshook)) {
 	// Action to record a payment on a TakePOS invoice
-	if ($action == 'valid' && $user->hasRight('facture', 'creer')) {
+	$canvalid = ($takeposmode === 'achat') ? $user->hasRight('fournisseur', 'facture', 'creer') : $user->hasRight('facture', 'creer');
+	if ($action == 'valid' && $canvalid) {
 		$bankaccount = 0;
 		$error = 0;
 
@@ -241,7 +277,7 @@ if (empty($reshook)) {
 		$now = dol_now();
 		$res = 0;
 
-		$invoice = new Facture($db);
+		$invoice = new $invoiceclass($db);
 		$invoice->fetch($placeid);
 
 		$db->begin();
@@ -249,10 +285,11 @@ if (empty($reshook)) {
 		if ($invoice->total_ttc < 0) {
 			$invoice->type = $invoice::TYPE_CREDIT_NOTE;
 
-			$sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."facture";
+			$invoice_table = ($takeposmode === 'achat') ? MAIN_DB_PREFIX."facture_fourn" : MAIN_DB_PREFIX."facture";
+			$sql = "SELECT rowid FROM ".$invoice_table;
 			$sql .= " WHERE entity IN (".getEntity('invoice').")";
 			$sql .= " AND fk_soc = ".((int) $invoice->socid);
-			$sql .= " AND type <> ".Facture::TYPE_CREDIT_NOTE;
+			$sql .= " AND type <> ".$invoiceclass::TYPE_CREDIT_NOTE;
 			$sql .= " AND fk_statut >= ".$invoice::STATUS_VALIDATED;
 			$sql .= " ORDER BY rowid DESC";
 
@@ -276,10 +313,10 @@ if (empty($reshook)) {
 
 		if ($error) {
 			dol_htmloutput_errors($errormsg, [], 1);
-		} elseif ($invoice->status != Facture::STATUS_DRAFT) {
+		} elseif ($invoice->status != $invoiceclass::STATUS_DRAFT) {
 			//If invoice is validated but it is not fully paid is not error and make the payment
 			$remaintopay = $invoice->getRemainToPay();
-			if (($remaintopay > 0 && $invoice->type != Facture::TYPE_CREDIT_NOTE) || ($remaintopay < 0 && $invoice->type == Facture::TYPE_CREDIT_NOTE)) {
+			if (($remaintopay > 0 && $invoice->type != $invoiceclass::TYPE_CREDIT_NOTE) || ($remaintopay < 0 && $invoice->type == $invoiceclass::TYPE_CREDIT_NOTE)) {
 				$res = 1;
 			} else {
 				dol_syslog("Sale already validated");
@@ -299,6 +336,12 @@ if (empty($reshook)) {
 			$constantforkey = 'CASHDESK_ID_WAREHOUSE'.(isset($_SESSION["takeposterminal"]) ? $_SESSION["takeposterminal"] : '');
 			dol_syslog("Validate invoice with stock change. Warehouse defined into constant ".$constantforkey." = ".getDolGlobalString($constantforkey));
 
+			// For achat: POSACH-X-Y doesn't match /^[\(]?PROV/i so validate() would keep it as final ref.
+			// Reset to (PROV{id}) so FactureFournisseur::validate() calls getNextNumRef() for a real sequential number.
+			if ($takeposmode === 'achat') {
+				$invoice->ref = '(PROV'.$invoice->id.')';
+			}
+
 			// Validate invoice with stock change into warehouse getDolGlobalInt($constantforkey)
 			// Label of stock movement will be the same as when we validate invoice "Invoice XXXX validated"
 			$batch_rule = 0;	// Module productbatch is disabled here, so no need for a batch_rule.
@@ -308,6 +351,11 @@ if (empty($reshook)) {
 			$conf->global->STOCK_CALCULATE_ON_BILL = $savconst;
 		} else {
 			// Validation of invoice with no change into stock (because param $idwarehouse is not fill)
+			// For achat: POSACH-X-Y doesn't match /^[\(]?PROV/i so validate() would keep it as final ref.
+			// Reset to (PROV{id}) so FactureFournisseur::validate() calls getNextNumRef() for a real sequential number.
+			if ($takeposmode === 'achat') {
+				$invoice->ref = '(PROV'.$invoice->id.')';
+			}
 			$res = $invoice->validate($user);
 			if ($res < 0) {
 				$error++;
@@ -320,40 +368,60 @@ if (empty($reshook)) {
 		if (!$error && $res >= 0) {
 			$remaintopay = $invoice->getRemainToPay();
 			if ($remaintopay > 0) {
-				$payment = new Paiement($db);
-
-				$payment->datepaye = $now;
-				$payment->fk_account = $bankaccount;
-				if ($pay == 'LIQ') {
-					$payment->pos_change = GETPOSTFLOAT('excess');
-				}
-
-				$payment->amounts[$invoice->id] = $amountofpayment;
-				// If user has not used change control, add total invoice payment
-				// Or if user has used change control and the amount of payment is higher than remain to pay, add the remain to pay
-				if ($amountofpayment <= 0 || $amountofpayment > $remaintopay) {
-					$payment->amounts[$invoice->id] = $remaintopay;
-				}
-				// We do not set $payments->multicurrency_amounts because we want payment to be in main currency.
-
-				$payment->paiementid = $paiementid;
-				$payment->num_payment = $invoice->ref;
-
-				if ($pay != "delayed") {
-					$res = $payment->create($user);
-					if ($res < 0) {
-						$error++;
-						dol_htmloutput_errors($langs->trans('Error').' '.$payment->error, $payment->errors, 1);
-					} else {
-						$res = $payment->addPaymentToBank($user, 'payment', '(CustomerInvoicePayment)', $bankaccount, '', '');
+				if ($takeposmode === 'achat') {
+					// Supplier invoice payment via PaiementFourn
+					$payment = new PaiementFourn($db);
+					$payment->datepaye = $now;
+					$payment->fk_account = $bankaccount;
+					$payment->amounts[$invoice->id] = ($amountofpayment <= 0 || $amountofpayment > $remaintopay) ? $remaintopay : $amountofpayment;
+					$payment->paiementid = $paiementid;
+					$payment->num_payment = $invoice->ref;
+					if ($pay != "delayed") {
+						$res = $payment->create($user, 1); // 1 = close paid invoices
 						if ($res < 0) {
 							$error++;
-							dol_htmloutput_errors($langs->trans('ErrorNoPaymentDefined').' '.$payment->error, $payment->errors, 1);
+							dol_htmloutput_errors($langs->trans('Error').' '.$payment->error, $payment->errors, 1);
+						} else {
+							$res = $payment->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $bankaccount, '', '');
+							if ($res < 0) {
+								$error++;
+								dol_htmloutput_errors($langs->trans('ErrorNoPaymentDefined').' '.$payment->error, $payment->errors, 1);
+							}
 						}
+						$remaintopay = $invoice->getRemainToPay();
+					} elseif (getDolGlobalInt("TAKEPOS_DELAYED_TERMS")) {
+						$invoice->setPaymentTerms(getDolGlobalInt("TAKEPOS_DELAYED_TERMS"));
 					}
-					$remaintopay = $invoice->getRemainToPay(); // Recalculate remain to pay after the payment is recorded
-				} elseif (getDolGlobalInt("TAKEPOS_DELAYED_TERMS")) {
-					$invoice->setPaymentTerms(getDolGlobalInt("TAKEPOS_DELAYED_TERMS"));
+				} else {
+					// Customer invoice payment via Paiement
+					$payment = new Paiement($db);
+					$payment->datepaye = $now;
+					$payment->fk_account = $bankaccount;
+					if ($pay == 'LIQ') {
+						$payment->pos_change = GETPOSTFLOAT('excess');
+					}
+					$payment->amounts[$invoice->id] = $amountofpayment;
+					if ($amountofpayment <= 0 || $amountofpayment > $remaintopay) {
+						$payment->amounts[$invoice->id] = $remaintopay;
+					}
+					$payment->paiementid = $paiementid;
+					$payment->num_payment = $invoice->ref;
+					if ($pay != "delayed") {
+						$res = $payment->create($user);
+						if ($res < 0) {
+							$error++;
+							dol_htmloutput_errors($langs->trans('Error').' '.$payment->error, $payment->errors, 1);
+						} else {
+							$res = $payment->addPaymentToBank($user, 'payment', '(CustomerInvoicePayment)', $bankaccount, '', '');
+							if ($res < 0) {
+								$error++;
+								dol_htmloutput_errors($langs->trans('ErrorNoPaymentDefined').' '.$payment->error, $payment->errors, 1);
+							}
+						}
+						$remaintopay = $invoice->getRemainToPay();
+					} elseif (getDolGlobalInt("TAKEPOS_DELAYED_TERMS")) {
+						$invoice->setPaymentTerms(getDolGlobalInt("TAKEPOS_DELAYED_TERMS"));
+					}
 				}
 			}
 
@@ -364,8 +432,11 @@ if (empty($reshook)) {
 					$invoice->paye = 1;
 					$invoice->status = $invoice::STATUS_CLOSED;
 				}
-				// set payment method
 				$invoice->setPaymentMethods($paiementid);
+				// Clear achat session after validation
+				if ($takeposmode === 'achat') {
+					unset($_SESSION[$achat_session_key]);
+				}
 			} else {
 				dol_syslog("Invoice is not paid, remain to pay = ".$remaintopay);
 			}
@@ -428,12 +499,12 @@ if (empty($reshook)) {
 	if ($action == 'creditnote' && $user->hasRight('facture', 'creer')) {
 		$db->begin();
 
-		$creditnote = new Facture($db);
+		$creditnote = new $invoiceclass($db);
 		$creditnote->socid = $invoice->socid;
 		$creditnote->date = dol_now();
 		$creditnote->module_source = 'takepos';
 		$creditnote->pos_source =  isset($_SESSION["takeposterminal"]) ? $_SESSION["takeposterminal"] : '' ;
-		$creditnote->type = Facture::TYPE_CREDIT_NOTE;
+		$creditnote->type = $invoiceclass::TYPE_CREDIT_NOTE;
 		$creditnote->fk_facture_source = $placeid;
 		//$creditnote->remise_absolue = $invoice->remise_absolue;
 		//$creditnote->remise_percent = $invoice->remise_percent;
@@ -462,7 +533,7 @@ if (empty($reshook)) {
 								$searchPreviousInvoice = false; // find, exit;
 								break;
 							} else {
-								if ($invoice->tab_previous_situation_invoice[$lineIndex]->type == Facture::TYPE_CREDIT_NOTE) {
+								if ($invoice->tab_previous_situation_invoice[$lineIndex]->type == $invoiceclass::TYPE_CREDIT_NOTE) {
 									$tab_jumped_credit_notes[$lineIndex] = $invoice->tab_previous_situation_invoice[$lineIndex]->id;
 								}
 								$lineIndex--; // go to previous invoice in cycle
@@ -639,8 +710,53 @@ if (empty($reshook)) {
 			$placeid = GETPOSTINT('placeid');
 		}
 
-		$invoice = new Facture($db);
+		$invoice = new $invoiceclass($db);
 		$invoice->fetch($placeid);
+	}
+
+	// Achat history: output a mini list of recent supplier invoices and exit
+	if ($action == 'achat_history' && $user->hasRight('takepos', 'run')) {
+		$sql = "SELECT f.rowid, f.ref, f.datef, f.total_ttc, f.fk_statut, s.nom as supplier";
+		$sql .= " FROM ".MAIN_DB_PREFIX."facture_fourn f";
+		$sql .= " LEFT JOIN ".MAIN_DB_PREFIX."societe s ON s.rowid = f.fk_soc";
+		$sql .= " WHERE f.entity IN (".getEntity('invoice').")";
+		$sql .= " ORDER BY f.rowid DESC LIMIT 50";
+		$resql = $db->query($sql);
+		echo '<html><head><meta charset="utf-8">';
+		echo '<link rel="stylesheet" href="css/pos.css.php">';
+		echo '<style>body{font-family:sans-serif;font-size:13px;padding:8px;}';
+		echo 'table{width:100%;border-collapse:collapse;}th,td{padding:6px 8px;border-bottom:1px solid #ddd;text-align:left;}';
+		echo 'tr:hover{background:#f5f5f5;}';
+		echo '.btn-load{background:#e07b39;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;}';
+		echo '.status0{color:#aaa;}.status1{color:#27ae60;}.status2{color:#2980b9;}';
+		echo '</style></head><body>';
+		echo '<h3 style="margin:0 0 10px">'.$langs->trans("SupplierInvoices").'</h3>';
+		echo '<table><tr><th>#</th><th>Référence</th><th>Date</th><th>Fournisseur</th><th>Total TTC</th><th>Statut</th><th></th></tr>';
+		if ($resql) {
+			while ($obj = $db->fetch_object($resql)) {
+				$statuslabel = $obj->fk_statut == 0 ? 'Brouillon' : ($obj->fk_statut == 1 ? 'Validée' : 'Payée');
+				$statusclass = 'status'.$obj->fk_statut;
+				echo '<tr>';
+				echo '<td>'.((int)$obj->rowid).'</td>';
+				echo '<td>'.htmlspecialchars($obj->ref).'</td>';
+				echo '<td>'.dol_print_date($db->jdate($obj->datef), 'day').'</td>';
+				echo '<td>'.htmlspecialchars((string)$obj->supplier).'</td>';
+				echo '<td>'.price($obj->total_ttc).'</td>';
+				echo '<td class="'.$statusclass.'">'.$statuslabel.'</td>';
+				echo '<td><button class="btn-load" onclick="loadInvoice('.((int)$obj->rowid).')">Ouvrir</button></td>';
+				echo '</tr>';
+			}
+		}
+		echo '</table>';
+		echo '<script>';
+		echo 'function loadInvoice(id) {';
+		echo '  var url = "invoice.php?action=history&token='.newToken().'&place='.$place.'&placeid="+id;';
+		echo '  parent.$("#poslines").load(url, function(){ parent.$.colorbox.close(); });';
+		echo '  if (typeof parent.resetEditBar === "function") parent.resetEditBar();';
+		echo '}';
+		echo '</script>';
+		echo '</body></html>';
+		exit;
 	}
 
 	// If we add a line and no invoice yet, we create the invoice
@@ -675,16 +791,55 @@ if (empty($reshook)) {
 		if ($invoice->socid <= 0) {
 			$langs->load('errors');
 			dol_htmloutput_errors($langs->trans("ErrorModuleSetupNotComplete", "TakePos"), [], 1);
+		} elseif ($takeposmode === 'achat') {
+			// ACHAT MODE: FactureFournisseur manages its own transaction internally.
+			// Do NOT wrap in an outer begin/commit (causes nested-transaction issues with (PROV) placeholder).
+			//
+			// IMPORTANT: llx_facture_fourn has a UNIQUE constraint on (ref_supplier, fk_soc, entity).
+			// TakePos does not collect a supplier reference number, so we set a unique placeholder here
+			// to avoid "ErrorRefAlreadyExists" when a previous invoice for the same supplier already has
+			// ref_supplier=''. The user can update ref_supplier later from the supplier invoice card.
+			if (empty($invoice->ref_supplier)) {
+				$invoice->ref_supplier = $achat_prov_ref.'-'.uniqid('', true);
+			}
+			$placeid = $invoice->create($user);
+			if ($placeid > 0) {
+				// Remove any OTHER stale invoice with the same POSACH provisional ref (different rowid)
+				$res_stale = $db->query("SELECT rowid FROM ".MAIN_DB_PREFIX."facture_fourn WHERE ref='".$db->escape($achat_prov_ref)."' AND rowid<>".((int) $placeid)." AND fk_statut=0");
+				if ($res_stale) {
+					while ($obj_stale = $db->fetch_object($res_stale)) {
+						$db->query("DELETE FROM ".MAIN_DB_PREFIX."facture_fourn_det WHERE fk_facture_fourn=".((int) $obj_stale->rowid));
+						$db->query("DELETE FROM ".MAIN_DB_PREFIX."facture_fourn WHERE rowid=".((int) $obj_stale->rowid));
+					}
+				}
+				// Stamp our new invoice with the stable POSACH provisional ref
+				$db->query("UPDATE ".MAIN_DB_PREFIX."facture_fourn SET ref='".$db->escape($achat_prov_ref)."' WHERE rowid=".((int) $placeid));
+				$invoice->ref = $achat_prov_ref;
+				$_SESSION[$achat_session_key] = $placeid;
+			} else {
+				// create() failed — possibly a concurrent request already created the invoice.
+				// Try to reuse the existing POSACH invoice instead of showing an error.
+				$invoice_concurrent = new FactureFournisseur($db);
+				$ret_concurrent = $invoice_concurrent->fetch(0, $achat_prov_ref);
+				if ($ret_concurrent > 0) {
+					// Concurrent request already stamped the invoice — reuse it
+					$invoice = $invoice_concurrent;
+					$placeid = $invoice->id;
+					$_SESSION[$achat_session_key] = $placeid;
+				} else {
+					dol_htmloutput_errors($invoice->error, $invoice->errors, 1);
+				}
+			}
 		} else {
 			$db->begin();
 
-			// Create invoice
+			// Create invoice (vente mode)
 			$placeid = $invoice->create($user);
 
 			if ($placeid < 0) {
 				dol_htmloutput_errors($invoice->error, $invoice->errors, 1);
 			}
-			$sql = "UPDATE ".MAIN_DB_PREFIX."facture";
+			$sql = "UPDATE ".MAIN_DB_PREFIX.$invoice->table_element;
 			$sql .= " SET ref='(PROV-POS".$_SESSION["takeposterminal"]."-".$place.")'";
 			$sql .= " WHERE rowid = ".((int) $placeid);
 			$resql = $db->query($sql);
@@ -842,7 +997,14 @@ if (empty($reshook)) {
 						$err++;
 						break;
 					}
-					$result = $invoice->updateline($line->id, $line->desc, $line->subprice, $line->qty + $qty, $line->remise_percent, $line->date_start, $line->date_end, $line->tva_tx, $line->localtax1_tx, $line->localtax2_tx, 'HT', $line->info_bits, $line->product_type, $line->fk_parent_line, 0, $line->fk_fournprice, $line->pa_ht, $line->label, $line->special_code, $line->array_options, $line->situation_percent, $line->fk_unit);
+					// FactureFournisseur::updateline() has a different signature than Facture::updateline()
+					if ($takeposmode === 'achat') {
+						// FactureFournisseur::updateline($id, $desc, $pu, $vatrate, $txlocaltax1, $txlocaltax2, $qty, $idproduct, $price_base_type, $info_bits, $type, $remise_percent, ...)
+						$result = $invoice->updateline($line->id, $line->desc, $line->subprice, $line->tva_tx, $line->localtax1_tx, $line->localtax2_tx, $line->qty + $qty, $line->fk_product, 'HT', $line->info_bits, $line->product_type, $line->remise_percent, 0, $line->date_start, $line->date_end, $line->array_options, $line->fk_unit);
+					} else {
+						// Facture::updateline($id, $desc, $pu, $qty, $remise_percent, $date_start, $date_end, $tva_tx, ...)
+						$result = $invoice->updateline($line->id, $line->desc, $line->subprice, $line->qty + $qty, $line->remise_percent, $line->date_start, $line->date_end, $line->tva_tx, $line->localtax1_tx, $line->localtax2_tx, 'HT', $line->info_bits, $line->product_type, $line->fk_parent_line, 0, $line->fk_fournprice, $line->pa_ht, $line->label, $line->special_code, $line->array_options, $line->situation_percent, $line->fk_unit);
+					}
 					if ($result < 0) {
 						dol_htmloutput_errors($invoice->error, $invoice->errors, 1);
 					} else {
@@ -901,7 +1063,37 @@ if (empty($reshook)) {
 				}
 
 				if (empty($err)) {
-					$idoflineadded = $invoice->addline($line['description'], $line['price'], $qty, $line['tva_tx'], $line['localtax1_tx'], $line['localtax2_tx'], $idproduct, (float) $line['remise_percent'], '', 0, 0, 0, 0, $price_base_type, $line['price_ttc'], $prod->type, -1, 0, '', 0, (empty($parent_line) ? '' : $parent_line), (empty($line['fk_fournprice']) ? 0 : $line['fk_fournprice']), (empty($line['pa_ht']) ? '' : $line['pa_ht']), '', $line['array_options'], 100, 0, null, 0);
+					if ($takeposmode === 'achat') {
+						// FactureFournisseur::addline() has a different parameter order than Facture::addline()
+						// Signature: addline($desc, $pu, $txtva, $txlocaltax1, $txlocaltax2, $qty, $fk_product, $remise_percent, ...)
+						$idoflineadded = $invoice->addline(
+							$line['description'],
+							$line['price'],
+							$line['tva_tx'],
+							$line['localtax1_tx'],
+							$line['localtax2_tx'],
+							$qty,
+							$idproduct,
+							(float) $line['remise_percent'],
+							0,
+							0,
+							0,
+							0,
+							$price_base_type,
+							$prod->type,
+							-1,
+							0,
+							$line['array_options'],
+							null,
+							0,
+							0,
+							'',
+							0,
+							(empty($parent_line) ? '' : $parent_line)
+						);
+					} else {
+						$idoflineadded = $invoice->addline($line['description'], $line['price'], $qty, $line['tva_tx'], $line['localtax1_tx'], $line['localtax2_tx'], $idproduct, (float) $line['remise_percent'], '', 0, 0, 0, 0, $price_base_type, $line['price_ttc'], $prod->type, -1, 0, '', 0, (empty($parent_line) ? '' : $parent_line), (empty($line['fk_fournprice']) ? 0 : $line['fk_fournprice']), (empty($line['pa_ht']) ? '' : $line['pa_ht']), '', $line['array_options'], 100, 0, null, 0);
+					}
 				}
 			}
 
@@ -995,7 +1187,7 @@ if (empty($reshook)) {
 		if ($placeid > 0) {
 			$result = $invoice->fetch($placeid);
 
-			if ($result > 0 && $invoice->status == Facture::STATUS_DRAFT) {
+			if ($result > 0 && $invoice->status == $invoiceclass::STATUS_DRAFT) {
 				$db->begin();
 
 				// We delete the lines
@@ -1009,13 +1201,23 @@ if (empty($reshook)) {
 					}
 				}
 
-				$sql = "UPDATE ".MAIN_DB_PREFIX."facture";
 				$varforconst = 'CASHDESK_ID_THIRDPARTY'.$_SESSION["takeposterminal"];
-				$sql .= " SET fk_soc = ".((int) getDolGlobalString($varforconst)).", ";
-				$sql .= " datec = '".$db->idate(dol_now())."'";
-				$sql .= " WHERE entity IN (".getEntity('invoice').")";
-				$sql .= " AND ref = '(PROV-POS".$db->escape($_SESSION["takeposterminal"]."-".$place).")'";
-				$resql1 = $db->query($sql);
+				if ($takeposmode === 'achat') {
+					// Achat: clear session + delete the now-empty draft supplier invoice entirely
+					unset($_SESSION[$achat_session_key]);
+					// Delete the supplier invoice itself (lines already deleted above)
+					$resql1 = $db->query("DELETE FROM ".MAIN_DB_PREFIX."facture_fourn WHERE rowid=".((int) $placeid)." AND fk_statut=0");
+					if (!$resql1) {
+						$resql1 = true; // don't block commit if delete fails, just proceed
+					}
+				} else {
+					$sql = "UPDATE ".MAIN_DB_PREFIX."facture";
+					$sql .= " SET fk_soc = ".((int) getDolGlobalString($varforconst)).", ";
+					$sql .= " datec = '".$db->idate(dol_now())."'";
+					$sql .= " WHERE entity IN (".getEntity('invoice').")";
+					$sql .= " AND ref = '(PROV-POS".$db->escape($_SESSION["takeposterminal"]."-".$place).")'";
+					$resql1 = $db->query($sql);
+				}
 
 				if ($resdeletelines && $resql1) {
 					$db->commit();
@@ -1766,7 +1968,7 @@ if ($usediv) {
 }
 
 $buttontocreatecreditnote = '';
-if (($action == "valid" || $action == "history" ||  ($action == "addline" && $invoice->status == $invoice::STATUS_CLOSED)) && $invoice->type != Facture::TYPE_CREDIT_NOTE && !getDolGlobalString('TAKEPOS_NO_CREDITNOTE')) {
+if (($action == "valid" || $action == "history" ||  ($action == "addline" && $invoice->status == $invoice::STATUS_CLOSED)) && $invoice->type != $invoiceclass::TYPE_CREDIT_NOTE && !getDolGlobalString('TAKEPOS_NO_CREDITNOTE')) {
 	$buttontocreatecreditnote .= ' &nbsp; <!-- Show button to create a credit note -->'."\n";
 	$buttontocreatecreditnote .= '<button id="buttonprint" type="button" onclick="ModalBox(\'ModalCreditNote\')">'.$langs->trans('CreateCreditNote').'</button>';
 	if (getDolGlobalInt('TAKEPOS_PRINT_INVOICE_DOC_INSTEAD_OF_RECEIPT')) {
