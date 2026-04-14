@@ -487,7 +487,7 @@ if ($nolinesbefore) {
 	</td>
 
 	<td class="nobottom linecoluht right"><?php $coldisplay++; ?>
-		<input type="text" name="price_ht" id="price_ht" class="flat right width50" value="<?php echo(GETPOSTISSET("price_ht") ? GETPOST("price_ht", 'alpha', 2) : ''); ?>">
+		<input type="text" name="price_ht" id="price_ht" class="flat right" style="width:110px;" value="<?php echo(GETPOSTISSET("price_ht") ? GETPOST("price_ht", 'alpha', 2) : ''); ?>">
 	</td>
 
 	<?php
@@ -501,7 +501,7 @@ if ($nolinesbefore) {
 	if (!empty($inputalsopricewithtax) && !getDolGlobalInt('MAIN_NO_INPUT_PRICE_WITH_TAX')) {
 		$coldisplay++; ?>
 		<td class="nobottom linecoluttc right">
-			<input type="text" name="price_ttc" id="price_ttc" class="flat right width50" value="<?php echo(GETPOSTISSET("price_ttc") ? GETPOST("price_ttc", 'alpha', 2) : ''); ?>">
+			<input type="text" name="price_ttc" id="price_ttc" class="flat right" style="width:110px;" value="<?php echo(GETPOSTISSET("price_ttc") ? GETPOST("price_ttc", 'alpha', 2) : ''); ?>">
 		</td>
 					<?php
 	}
@@ -562,7 +562,9 @@ if ($nolinesbefore) {
 	$coldisplay += $colspan;
 	?>
 	<td class="nobottom linecoledit center valignmiddle" colspan="<?php echo $colspan; ?>">
-		<input type="submit" class="button reposition" value="<?php echo $langs->trans('Add'); ?>" name="addline" id="addline">
+		<button type="submit" name="addline" id="addline" class="button reposition" title="<?php echo $langs->trans('Add'); ?>" style="padding:5px 10px; min-width:0; line-height:1;">
+			<span class="fa fa-plus-circle" style="font-size:1.3em; vertical-align:middle;"></span>
+		</button>
 	</td>
 </tr>
 
