@@ -228,6 +228,38 @@ if ($action == 'add' && $user->hasRight('banque', 'transfer')) {
 					$error++;
 				}
 
+				// In transaction mode: update the payment record so the invoice
+				// now references the destination bank account (bank_line_id_to).
+				if (!$error && $transfer_mode == 'transaction') {
+					$transactionid_used = GETPOSTINT($n.'_transaction_id');
+					if ($transactionid_used > 0) {
+						// Find all payment-type links on the original transaction
+						$sqlu  = "SELECT url_id, type FROM ".MAIN_DB_PREFIX."bank_url";
+						$sqlu .= " WHERE fk_bank = ".((int) $transactionid_used);
+						$sqlu .= " AND type IN ('payment','payment_supplier')";
+						$resqlu = $db->query($sqlu);
+						if ($resqlu) {
+							while ($obju = $db->fetch_object($resqlu)) {
+								if ($obju->type == 'payment') {
+									$table = MAIN_DB_PREFIX.'paiement';
+								} else {
+									$table = MAIN_DB_PREFIX.'paiementfourn';
+								}
+								// Point the payment's fk_bank to the new destination bank line
+								$sqlup  = "UPDATE ".$table;
+								$sqlup .= " SET fk_bank = ".((int) $bank_line_id_to);
+								$sqlup .= " WHERE fk_bank = ".((int) $transactionid_used);
+								$sqlup .= " AND rowid = ".((int) $obju->url_id);
+								if (!$db->query($sqlup)) {
+									$error++;
+									setEventMessages($db->lasterror(), null, 'errors');
+								}
+							}
+							$db->free($resqlu);
+						}
+					}
+				}
+
 				if (!$error) {
 					$mesg = $langs->trans("TransferFromToDone", '{s1}', '{s2}', $amount[$n], $langs->transnoentitiesnoconv("Currency".$conf->currency));
 					$mesg = str_replace('{s1}', '<a href="bankentries_list.php?id='.$tmpaccountfrom->id.'&sortfield=b.datev,b.dateo,b.rowid&sortorder=desc">'.$tmpaccountfrom->label.'</a>', $mesg);
