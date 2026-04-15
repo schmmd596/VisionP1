@@ -62,6 +62,9 @@ $place = (GETPOST('place', 'aZ09') ? GETPOST('place', 'aZ09') : '0'); // $place 
 
 $invoiceid = GETPOSTINT('invoiceid');
 
+// posaction: 'valid' (default) or 'basculer' — controls what action invoice.php receives on payment confirmation
+$posaction = (GETPOST('posaction', 'aZ09') === 'basculer') ? 'basculer' : 'valid';
+
 $hookmanager->initHooks(array('takepospay'));
 
 if (!$user->hasRight('takepos', 'run')) {
@@ -379,9 +382,11 @@ if (!getDolGlobalInt("TAKEPOS_NUMPAD")) {
 		$('.change2').addClass('colorwhite');
 	}
 
+	var posaction = '<?php echo dol_escape_js($posaction); ?>';
+
 	function Validate(payment)
 	{
-		console.log("Launch Validate");
+		console.log("Launch Validate posaction="+posaction);
 
 		var invoiceid = <?php echo($invoiceid > 0 ? $invoiceid : 0); ?>;
 		var accountid = $("#selectaccountid").val();
@@ -391,11 +396,15 @@ if (!getDolGlobalInt("TAKEPOS_NUMPAD")) {
 			amountpayed = <?php echo $invoice->total_ttc; ?>;
 		}
 		console.log("We click on the payment mode to pay amount = "+amountpayed);
-		parent.$("#poslines").load("invoice.php?place=<?php echo $place; ?>&action=valid&token=<?php echo newToken(); ?>&pay="+payment+"&amount="+amountpayed+"&excess="+excess+"&invoiceid="+invoiceid+"&accountid="+accountid, function() {
+		parent.$("#poslines").load("invoice.php?place=<?php echo $place; ?>&action="+posaction+"&token=<?php echo newToken(); ?>&pay="+payment+"&amount="+amountpayed+"&excess="+excess+"&invoiceid="+invoiceid+"&accountid="+accountid, function() {
 			if (amountpayed > <?php echo $remaintopay; ?> || amountpayed == <?php echo $remaintopay; ?> || amountpayed==0 ) {
-				console.log("Close popup");
+				console.log("Close popup posaction="+posaction);
 				parent.$('#invoiceid').val("");
 				parent.$.colorbox.close();
+				if (posaction === 'basculer') {
+					// Full reload to switch button panel from achat → vente
+					parent.window.location.href = "<?php echo DOL_URL_ROOT; ?>/takepos/index.php?place=<?php echo dol_escape_js($place); ?>";
+				}
 			}
 			else {
 				console.log("Amount is not complete, so we do NOT close popup and reload it.");
@@ -496,10 +505,13 @@ if (!getDolGlobalInt("TAKEPOS_NUMPAD")) {
 			  } else {
 				document.getElementById("card-present-alert").innerHTML = '<div class="warning clearboth"><?php echo $langs->trans('PaymentValidated'); ?></div>';
 				console.log("Capture paymentIntent successful "+paymentIntentId);
-				  parent.$("#poslines").load("invoice.php?place=<?php echo $place; ?>&action=valid&token=<?php echo newToken(); ?>&pay=CB&amount="+amountpayed+"&excess="+excess+"&invoiceid="+invoiceid+"&accountid="+accountid, function() {
+				  parent.$("#poslines").load("invoice.php?place=<?php echo $place; ?>&action="+posaction+"&token=<?php echo newToken(); ?>&pay=CB&amount="+amountpayed+"&excess="+excess+"&invoiceid="+invoiceid+"&accountid="+accountid, function() {
 			if (amountpayed > <?php echo $remaintopay; ?> || amountpayed == <?php echo $remaintopay; ?> || amountpayed==0 ) {
 				console.log("Close popup");
 				parent.$.colorbox.close();
+				if (posaction === 'basculer') {
+					parent.window.location.href = "<?php echo DOL_URL_ROOT; ?>/takepos/index.php?place=<?php echo dol_escape_js($place); ?>";
+				}
 			}
 			else {
 				console.log("Amount is not comple, so we do NOT close popup and reload it.");
@@ -539,10 +551,12 @@ if (!getDolGlobalInt("TAKEPOS_NUMPAD")) {
 				url: '<?php echo DOL_URL_ROOT ?>/takepos/smpcb.php?status' }).done(function (data) {
 				console.log(data);
 				if (data === "SUCCESS") {
-					parent.$("#poslines").load("invoice.php?place=<?php echo urlencode($place); ?>&action=valid&token=<?php echo newToken(); ?>&pay=CB&amount=" + amountpayed + "&invoiceid=" + invoiceid, function () {
+					parent.$("#poslines").load("invoice.php?place=<?php echo urlencode($place); ?>&action="+posaction+"&token=<?php echo newToken(); ?>&pay=CB&amount=" + amountpayed + "&invoiceid=" + invoiceid, function () {
 						//parent.$("#poslines").scrollTop(parent.$("#poslines")[0].scrollHeight);
 						parent.$.colorbox.close();
-						//parent.setFocusOnSearchField();	// This does not have effect
+						if (posaction === 'basculer') {
+							parent.window.location.href = "<?php echo DOL_URL_ROOT; ?>/takepos/index.php?place=<?php echo dol_escape_js($place); ?>";
+						}
 					});
 					clearInterval(loop);
 				} else if (data === "FAILED") {

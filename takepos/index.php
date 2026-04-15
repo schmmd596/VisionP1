@@ -784,8 +784,12 @@ function Basculer() {
 		alert("<?php echo dol_escape_js($langs->trans('NoInvoice')); ?>");
 		return;
 	}
-	console.log("Open basculer popup invoiceid="+invoiceid+" place="+place);
-	$.colorbox({href:"basculer.php?place="+place+"&invoiceid="+invoiceid+"&token=<?php echo newToken(); ?>", width:"60%", height:"50%", transition:"none", iframe:"true", title:"Basculer"});
+	console.log("Open basculer payment popup invoiceid="+invoiceid+" place="+place);
+	<?php
+	$alternative_payurl = getDolGlobalString('TAKEPOS_ALTERNATIVE_PAYMENT_SCREEN');
+	$bascpayurl = empty($alternative_payurl) ? 'pay.php' : dol_buildpath($alternative_payurl, 1);
+	?>
+	$.colorbox({href:"<?php echo $bascpayurl; ?>?place="+place+"&invoiceid="+invoiceid+"&posaction=basculer", width:"80%", height:"90%", transition:"none", iframe:"true", title:"Basculer"});
 }
 
 function TakeposOrderNotes() {
