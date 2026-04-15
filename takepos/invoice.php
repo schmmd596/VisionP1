@@ -1295,68 +1295,118 @@ if (empty($reshook)) {
 			}
 		}
 
-		// --- Step 4: create customer invoice (Facture) with same lines ---
+		// --- Step 4: merge lines into existing vente invoice, or create a new one ---
 		if (!$basculer_error) {
-			$newInvoice = new Facture($db);
-			$constforcompanyid = 'CASHDESK_ID_THIRDPARTY'.$term;
-			$newInvoice->socid        = getDolGlobalInt($constforcompanyid);
-			$newInvoice->date         = $now;
-			$newInvoice->module_source = 'takepos';
-			$newInvoice->pos_source   = $term;
-			if (isModEnabled('project') && getDolGlobalInt('CASHDESK_ID_PROJECT'.$term)) {
-				$newInvoice->fk_project = getDolGlobalInt('CASHDESK_ID_PROJECT'.$term);
+			$venteProvRef  = '(PROV-POS'.$term.'-'.$place.')';
+			$venteInvoice  = new Facture($db);
+			$existingVente = $venteInvoice->fetch(0, $venteProvRef);
+
+			if ($existingVente <= 0) {
+				// No open vente invoice — create one
+				$constforcompanyid = 'CASHDESK_ID_THIRDPARTY'.$term;
+				$venteInvoice->socid        = getDolGlobalInt($constforcompanyid);
+				$venteInvoice->date         = $now;
+				$venteInvoice->module_source = 'takepos';
+				$venteInvoice->pos_source   = $term;
+				if (isModEnabled('project') && getDolGlobalInt('CASHDESK_ID_PROJECT'.$term)) {
+					$venteInvoice->fk_project = getDolGlobalInt('CASHDESK_ID_PROJECT'.$term);
+				}
+				$res = $venteInvoice->create($user);
+				if ($res <= 0) {
+					$basculer_error++;
+					dol_htmloutput_errors($venteInvoice->error, $venteInvoice->errors, 1);
+				} else {
+					// Set provisional ref to the standard TakePos vente format
+					$db->query(
+						"UPDATE ".MAIN_DB_PREFIX."facture SET ref='".$db->escape($venteProvRef)."'"
+						." WHERE rowid=".((int) $venteInvoice->id)
+					);
+					$venteInvoice->fetch($venteInvoice->id); // reload with lines (empty)
+				}
 			}
 
-			$res = $newInvoice->create($user);
-			if ($res <= 0) {
-				$basculer_error++;
-				dol_htmloutput_errors($newInvoice->error, $newInvoice->errors, 1);
-			} else {
-				// Set provisional ref to the standard TakePos vente format
-				$db->query(
-					"UPDATE ".MAIN_DB_PREFIX."facture SET ref='(PROV-POS".$db->escape($term.'-'.$place).")'"
-					." WHERE rowid=".((int) $newInvoice->id)
-				);
+			// Merge achat lines into the vente invoice
+			if (!$basculer_error) {
+				// Build a map of fk_product → existing line for quick lookup (product lines only)
+				$existingByProduct = array();
+				foreach ($venteInvoice->lines as $vline) {
+					if ($vline->fk_product > 0) {
+						// Keep the first match; later duplicates stay as-is
+						if (!isset($existingByProduct[$vline->fk_product])) {
+							$existingByProduct[$vline->fk_product] = $vline;
+						}
+					}
+				}
 
-				// Copy lines from supplier invoice to customer invoice
 				foreach ($invoice->lines as $line) {
-					$res = $newInvoice->addline(
-						$line->desc,
-						$line->subprice,   // pu_ht
-						$line->qty,
-						$line->tva_tx,
-						$line->localtax1_tx,
-						$line->localtax2_tx,
-						$line->fk_product,
-						$line->remise_percent,
-						'',                // date_start
-						0, 0, 0, 0,
-						'HT',
-						$line->subprice,   // pu_ttc (ignored when HT)
-						0,
-						-1,                // rang
-						0,
-						'',
-						0, 0, 0, 0,
-						'',
-						array(),
-						100,
-						0,
-						null,
-						0
-					);
+					if ($line->fk_product > 0 && isset($existingByProduct[$line->fk_product])) {
+						// Product already in vente invoice → increase quantity
+						$el = $existingByProduct[$line->fk_product];
+						$newqty = $el->qty + $line->qty;
+						$res = $venteInvoice->updateline(
+							$el->id,
+							$el->desc,
+							$el->subprice,
+							$newqty,
+							$el->remise_percent,
+							$el->date_start,
+							$el->date_end,
+							$el->tva_tx,
+							$el->localtax1_tx,
+							$el->localtax2_tx,
+							'HT',
+							$el->info_bits,
+							$el->product_type,
+							$el->fk_parent_line,
+							0,
+							$el->fk_fournprice,
+							$el->pa_ht,
+							$el->label,
+							$el->special_code,
+							$el->array_options,
+							$el->situation_percent,
+							$el->fk_unit
+						);
+					} else {
+						// New product or freezone line → add it
+						$res = $venteInvoice->addline(
+							$line->desc,
+							$line->subprice,
+							$line->qty,
+							$line->tva_tx,
+							$line->localtax1_tx,
+							$line->localtax2_tx,
+							$line->fk_product,
+							$line->remise_percent,
+							'',
+							0, 0, 0, 0,
+							'HT',
+							$line->subprice,
+							0,
+							-1,
+							0,
+							'',
+							0, 0, 0, 0,
+							'',
+							array(),
+							100,
+							0,
+							null,
+							0
+						);
+					}
 					if ($res < 0) {
 						$basculer_error++;
-						dol_htmloutput_errors($newInvoice->error, $newInvoice->errors, 1);
+						dol_htmloutput_errors($venteInvoice->error, $venteInvoice->errors, 1);
 						break;
 					}
 				}
 
 				if (!$basculer_error) {
-					$newInvoice->fetch($newInvoice->id);
-					// Switch context so the page renders the new vente invoice
-					$invoice    = $newInvoice;
-					$placeid    = $newInvoice->id;
+					$venteInvoice->fetch($venteInvoice->id);
+					// Switch context so the page renders the vente invoice
+					$invoice      = $venteInvoice;
+					$placeid      = $venteInvoice->id;
 					$invoiceclass = 'Facture';
 					$takeposmode  = 'vente';
 				}
