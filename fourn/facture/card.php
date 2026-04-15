@@ -2744,7 +2744,17 @@ if ($action == 'create') {
 		// Date invoice
 		print '<tr><td class="fieldrequired">'.$langs->trans('DateInvoice').'</td><td>';
 		print img_picto('', 'action', 'class="pictofixedwidth"');
-		print $form->selectDate($dateinvoice ? (int) $dateinvoice : '', '', 0, 0, 0, "add", 1, 1);
+		if ($user->admin) {
+			// Admins can pick any date
+			print $form->selectDate($dateinvoice ? (int) $dateinvoice : '', '', 0, 0, 0, "add", 1, 1);
+		} else {
+			// Non-admins: force today's date — display as text, submit as hidden fields
+			$today_ts = dol_now();
+			print '<input type="hidden" name="reyear"  value="'.dol_print_date($today_ts, '%Y').'">';
+			print '<input type="hidden" name="remonth" value="'.dol_print_date($today_ts, '%m').'">';
+			print '<input type="hidden" name="reday"   value="'.dol_print_date($today_ts, '%d').'">';
+			print dol_print_date($today_ts, 'day');
+		}
 		print '</td></tr>';
 
 		// Payment term
