@@ -522,10 +522,19 @@ if ($action == 'create' || $action == 'confirm_paiement' || $action == 'add_paie
 			print '</td></tr>';
 
 			print '<tr><td class="fieldrequired">'.$langs->trans('Date').'</td><td>';
-			// $object is default vendor invoice
-			$adddateof = array(array('adddateof' => $object->date));
-			$adddateof[] = array('adddateof' => $object->date_echeance, 'labeladddateof' => $langs->transnoentities('DateDue'));
-			print $form->selectDate($dateinvoice, '', 0, 0, 0, "addpaiement", 1, 1, 0, '', '', $adddateof);
+			if ($user->admin) {
+				// Admins can pick any date
+				$adddateof = array(array('adddateof' => $object->date));
+				$adddateof[] = array('adddateof' => $object->date_echeance, 'labeladddateof' => $langs->transnoentities('DateDue'));
+				print $form->selectDate($dateinvoice, '', 0, 0, 0, "addpaiement", 1, 1, 0, '', '', $adddateof);
+			} else {
+				// Non-admins: force today's date — display as text, submit as hidden fields
+				$today_ts = dol_now();
+				print '<input type="hidden" name="reyear"  value="'.dol_print_date($today_ts, '%Y').'">';
+				print '<input type="hidden" name="remonth" value="'.dol_print_date($today_ts, '%m').'">';
+				print '<input type="hidden" name="reday"   value="'.dol_print_date($today_ts, '%d').'">';
+				print dol_print_date($today_ts, 'day');
+			}
 			print '</td></tr>';
 			print '<tr><td class="fieldrequired">'.$langs->trans('PaymentMode').'</td><td>';
 			$form->select_types_paiements(!GETPOST('paiementid') ? $obj->fk_mode_reglement : GETPOST('paiementid'), 'paiementid');
