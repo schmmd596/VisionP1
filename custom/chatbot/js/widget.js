@@ -23,12 +23,12 @@
     var minBtn      = document.getElementById('chatbot-minimize');
 
     // ── Upload & Audio refs ──────────────────────────────────
-    var uploadBtn   = document.getElementById('chatbot-upload-btn');
-    var fileInput   = document.getElementById('chatbot-file-input');
-    var micBtn      = document.getElementById('chatbot-mic-btn');
-    var recordingInd = document.getElementById('chatbot-recording-indicator');
-    var recordingTime = document.getElementById('chatbot-recording-time');
-    var filePreview = document.getElementById('chatbot-file-preview');
+    var uploadBtn   = document.getElementById('chatbot-upload-btn') || null;
+    var fileInput   = document.getElementById('chatbot-file-input') || null;
+    var micBtn      = document.getElementById('chatbot-mic-btn') || null;
+    var recordingInd = document.getElementById('chatbot-recording-indicator') || null;
+    var recordingTime = document.getElementById('chatbot-recording-time') || null;
+    var filePreview = document.getElementById('chatbot-file-preview') || null;
 
     var isLoading   = false;
     var isMinimized = false;
@@ -95,10 +95,8 @@
     });
 
     // ── Upload ────────────────────────────────────────────────
-    if (uploadBtn) {
+    if (uploadBtn && fileInput) {
         uploadBtn.addEventListener('click', function () { fileInput.click(); });
-    }
-    if (fileInput) {
         fileInput.addEventListener('change', function () {
             if (this.files && this.files[0]) {
                 handleFileSelect(this.files[0]);
@@ -427,8 +425,10 @@
             } else {
                 previewHtml = '<img src="' + e.target.result + '" class="file-preview-img" />';
             }
-            filePreview.innerHTML = previewHtml;
-            filePreview.style.display = 'block';
+            if (filePreview) {
+                filePreview.innerHTML = previewHtml;
+                filePreview.style.display = 'block';
+            }
 
             // Auto-send the file
             sendFile(file, inputEl.value.trim());
@@ -479,6 +479,9 @@
                 appendMsg('user', 'Analyse en cours...', conv);
                 conv.history.push({ role: 'user', content: contextMsg });
                 saveStore();
+
+                // Clear preview
+                if (filePreview) filePreview.style.display = 'none';
 
                 // Send to Claude with file context
                 isLoading = true;
@@ -617,14 +620,14 @@
             };
 
             mediaRecorder.start();
-            recordingInd.style.display = 'flex';
-            micBtn.classList.add('recording');
+            if (recordingInd) recordingInd.style.display = 'flex';
+            if (micBtn) micBtn.classList.add('recording');
 
             // Update recording time
             var recordingInterval = setInterval(function () {
                 if (!isRecording) { clearInterval(recordingInterval); return; }
                 var elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-                recordingTime.textContent = Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0');
+                if (recordingTime) recordingTime.textContent = Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0');
                 if (elapsed > 120) stopAudioRecording();
             }, 100);
         }).catch(function (err) {
@@ -636,8 +639,8 @@
         if (!isRecording || !mediaRecorder) return;
         isRecording = false;
         mediaRecorder.stop();
-        recordingInd.style.display = 'none';
-        micBtn.classList.remove('recording');
+        if (recordingInd) recordingInd.style.display = 'none';
+        if (micBtn) micBtn.classList.remove('recording');
     }
 
     function sendAudio(audioBlob) {

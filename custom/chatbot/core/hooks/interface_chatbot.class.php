@@ -36,7 +36,8 @@ class interface_chatbot
         // Inject widget HTML + load assets
         $this->resprints = '
         <!-- Chatbot IA Widget -->
-        <link rel="stylesheet" href="'.$url_base.'/css/widget.css?v=1.0.0">
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <link rel="stylesheet" href="'.$url_base.'/css/widget.css?v='.time().'">
 
         <!-- Chat Toggle Button -->
         <div id="chatbot-toggle" title="Assistant IA">
@@ -129,7 +130,7 @@ class interface_chatbot
             var CHATBOT_AJAX_URL = "'.dol_buildpath('/chatbot/ajax/chat.php', 1).'";
             var CHATBOT_TOKEN = "'.newToken().'";
         </script>
-        <script src="'.$url_base.'/js/widget.js?v=1.0.0"></script>
+        <script src="'.$url_base.'/js/widget.js?v='.time().'"></script>
         <!-- End Chatbot IA Widget -->
         ';
 
