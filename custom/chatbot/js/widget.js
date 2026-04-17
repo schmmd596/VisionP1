@@ -21,7 +21,6 @@
     var newChatBtn  = document.getElementById('chatbot-new-chat');
     var closeBtn    = document.getElementById('chatbot-close');
     var minBtn      = document.getElementById('chatbot-minimize');
-    var suggsEl     = document.getElementById('chatbot-suggestions');
 
     var isLoading   = false;
     var isMinimized = false;
@@ -62,18 +61,15 @@
 
     // ── New conversation ──────────────────────────────────────
     newChatBtn.addEventListener('click', function () {
-        createNewConversation();
-        renderConvList();
-        renderMessages();
-        inputEl.focus();
-    });
-
-    // ── Suggestions ───────────────────────────────────────────
-    document.querySelectorAll('.suggestion-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            suggsEl.style.display = 'none';
-            sendMessage(this.getAttribute('data-msg'));
-        });
+        var emptyConv = store.conversations.find(function(c) { return c.messages.length === 0; });
+        if (emptyConv) {
+            switchConv(emptyConv.id);
+        } else {
+            createNewConversation();
+            renderConvList();
+            renderMessages();
+            inputEl.focus();
+        }
     });
 
     // ── Input ─────────────────────────────────────────────────
@@ -92,7 +88,6 @@
         if (!text || isLoading) return;
         inputEl.value = '';
         inputEl.style.height = 'auto';
-        suggsEl.style.display = 'none';
         sendMessage(text);
     }
 
@@ -250,7 +245,6 @@
         saveStore();
         renderConvList();
         renderMessages();
-        suggsEl.style.display = getActive().messages.length === 0 ? 'flex' : 'none';
         scrollToBottom();
         inputEl.focus();
     }
@@ -301,18 +295,13 @@
         if (!conv) return;
         msgArea.innerHTML = '';
 
-        if (conv.messages.length === 0) {
-            // Conversation vide — juste les suggestions
-            suggsEl.style.display = 'flex';
-        } else {
-            suggsEl.style.display = 'none';
-            conv.messages.forEach(function (m) {
-                var div = document.createElement('div');
-                div.className = m.cls;
-                div.innerHTML = m.html;
-                msgArea.appendChild(div);
-            });
-        }
+        conv.messages.forEach(function (m) {
+            var div = document.createElement('div');
+            div.className = m.cls;
+            div.innerHTML = m.html;
+            msgArea.appendChild(div);
+        });
+        
         scrollToBottom();
     }
 

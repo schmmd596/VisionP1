@@ -377,7 +377,7 @@ Utilisateur connecté : ".$user->firstname." ".$user->lastname." (login : ".$use
 Date/Heure : ".dol_print_date(dol_now(), 'dayhour')."
 
 === CAPACITÉS COMPLÈTES ===
-Tu gères TOUTES les fonctionnalités du système ERP :
+Tu gères TOUTES les fonctionnalités du système ERP, incluant tous les modules standards et les modules customisés qui ont été créés :
 
 1. PRODUITS & SERVICES : recherche, création, stock, prix, catégories
 2. CLIENTS : recherche, création, informations, historique
@@ -385,21 +385,26 @@ Tu gères TOUTES les fonctionnalités du système ERP :
 4. FACTURES CLIENTS : consultation, création, validation, détails, lignes
 5. FACTURES FOURNISSEURS : consultation, création, validation
 6. PAIEMENTS : enregistrement de paiements sur factures (virement, chèque, carte, espèces)
-7. BANQUE : comptes bancaires, soldes, mouvements, transactions
+7. BANQUE : comptes bancaires, soldes, mouvements, transactions, transferts
 8. COMMANDES CLIENTS : consultation, création
 9. COMMANDES FOURNISSEURS : consultation, création
 10. UTILISATEURS : recherche, informations
 11. COMPTABILITÉ : écritures comptables, balances, plan comptable, journaux
 12. STATISTIQUES : CA, impayés, indicateurs de performance
+13. TOUS LES AUTRES MODULES CUSTOMISÉS : Tu as accès plein et entier à l'ensemble du système, incluant toute nouvelle fonctionnalité personnalisée. Tu as le droit et la capacité d'exécuter tout ce qui t'est demandé.
 
 === EXPERTISE COMPTABLE & FISCALE MAURITANIENNE ===
 Tu es expert en :
 - Plan Comptable Mauritanien (PCM) : toutes les classes de comptes (1 à 8)
-- Fiscalité mauritanienne : IS (25%), TVA (16%), IRPP, patente, droits de douane
+- Fiscalité mauritanienne : IS (25%), TVA (16%), IMF, IRPP, patente, droits de douane, retenues à la source
 - Écritures comptables : vérification, correction, conseil
 - Conformité fiscale : obligations déclaratives, calcul d'impôts
 
 Pour les questions comptables et fiscales, utilise TOUJOURS l'outil accounting_advice qui accède à la base de connaissances complète du PCM et de la fiscalité mauritanienne.
+
+=== RÈGLES IMPORTANTES D'INTELLIGENCE ===
+1. QUALITÉ DES DONNÉES (TRÈS IMPORTANT) : Avant d'appeler une fonction de création ou d'action (ex: ajouter une banque, créer une facture, faire un paiement), VERIFIE si l'utilisateur a fourni TOUTES les informations nécessaires. Si une information requise manque (ex: nom du client, numéro de compte, montant), NE FAIS PAS D'ERREUR, ne devine JAMAIS et N'APPELLE PAS l'outil. Pose d'abord la question à l'utilisateur intelligemment pour obtenir les données restantes.
+2. MARQUE BLANCHE (CRITIQUE ET IMPÉRATIF) : Tu ne dois SOUS AUCUN PRÉTEXTE mentionner le mot 'Dolibarr', 'Odoo', 'ERPNext' ou tout autre concurrent dans tes réponses. C'est strictement interdit et éliminatoire. Remplace systématiquement par 'le système', 'ce système' ou 'votre plateforme'. Aucune exception.
 
 === RÈGLES ===
 1. Si la question ne concerne PAS la gestion d'entreprise, la comptabilité ou la fiscalité, réponds :
@@ -1272,6 +1277,8 @@ if ($provider === 'anthropic') {
         break;
     }
     if (empty($final_text)) $final_text = 'Je n\'ai pas pu générer une réponse. Veuillez réessayer.';
+    // Post-traitement strict pour supprimer toute mention de Dolibarr
+    $final_text = str_ireplace(['dolibarr', 'DoliBarr'], 'le système', $final_text);
     echo json_encode(['success'=>true,'message'=>$final_text,'provider'=>$provider], JSON_UNESCAPED_UNICODE);
 
 } else {
@@ -1325,7 +1332,9 @@ if ($provider === 'anthropic') {
                     $f2    = $j['choices'][0]['finish_reason'] ?? null;
                     if ($f2) $fr = $f2;
                     if (!empty($delta['content'])) {
-                        echo "data: ".json_encode(['token'=>$delta['content']],JSON_UNESCAPED_UNICODE)."\n\n";
+                        // Remplacement strict à la volée, bien que plus difficile en stream
+                        $clean_token = str_ireplace(['dolibarr', 'DoliBarr'], 'le système', $delta['content']);
+                        echo "data: ".json_encode(['token'=>$clean_token],JSON_UNESCAPED_UNICODE)."\n\n";
                         if (ob_get_level() > 0) ob_flush();
                         flush();
                     }

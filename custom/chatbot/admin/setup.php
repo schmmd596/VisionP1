@@ -248,7 +248,7 @@ function testApi() {
         }
     }).catch(function() {
         result.style.color = '#ef4444';
-        result.textContent = '❌ Impossible de contacter le serveur';
+        result.textContent = ' Impossible de contacter le serveur';
     });
 }
 </script>

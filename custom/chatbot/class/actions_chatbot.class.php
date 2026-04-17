@@ -85,32 +85,7 @@ class ActionsChatbot
                     <div id="chatbot-messages"></div>
 
                     <div id="chatbot-suggestions">
-                        <div class="suggestions-grid">
-                            <button class="suggestion-btn" data-msg="Montre-moi les statistiques du mois">
-                                <span class="sugg-icon">&#128202;</span>
-                                <span class="sugg-text">Statistiques</span>
-                            </button>
-                            <button class="suggestion-btn" data-msg="Liste des factures impayees">
-                                <span class="sugg-icon">&#128196;</span>
-                                <span class="sugg-text">Impayees</span>
-                            </button>
-                            <button class="suggestion-btn" data-msg="Solde des comptes bancaires">
-                                <span class="sugg-icon">&#127974;</span>
-                                <span class="sugg-text">Banque</span>
-                            </button>
-                            <button class="suggestion-btn" data-msg="Creer une facture client">
-                                <span class="sugg-icon">&#10133;</span>
-                                <span class="sugg-text">Facture</span>
-                            </button>
-                            <button class="suggestion-btn" data-msg="Comment enregistrer un achat de marchandises selon le plan comptable mauritanien ?">
-                                <span class="sugg-icon">&#128218;</span>
-                                <span class="sugg-text">Comptabilite</span>
-                            </button>
-                            <button class="suggestion-btn" data-msg="Quel est le taux de TVA applicable en Mauritanie et comment la declarer ?">
-                                <span class="sugg-icon">&#128176;</span>
-                                <span class="sugg-text">Fiscalite</span>
-                            </button>
-                        </div>
+          
                     </div>
 
                     <div id="chatbot-input-area">

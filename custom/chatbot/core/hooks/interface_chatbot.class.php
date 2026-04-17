@@ -76,10 +76,6 @@ class interface_chatbot
                 <div class="chat-message bot-message">
                     <div class="message-content">
                         Bonjour ! Je suis votre Tafkir IA. Je peux vous aider à :<br><br>
-                         <strong>Consulter</strong> vos produits, clients, fournisseurs<br>
-                         <strong>Créer</strong> des factures clients ou fournisseurs<br>
-                         <strong>Ajouter</strong> de nouveaux produits<br>
-                        <strong>Obtenir</strong> des statistiques en temps réel<br><br>
                         Comment puis-je vous aider ?
                     </div>
                     <div class="message-time">Maintenant</div>
