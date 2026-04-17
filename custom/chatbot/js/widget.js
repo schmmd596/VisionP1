@@ -1,281 +1,430 @@
 /**
- * Chatbot IA Widget - Dolibarr
- * Floating chat interface with markdown rendering support
+ * Tafkir IA Widget — Multi-conversation system (Claude-like)
  */
 (function () {
     'use strict';
 
-    // ── State ──────────────────────────────────────────────
-    var history = [];     // [{role, content}] sent to backend
-    var isLoading = false;
-    var isMinimized = false;
+    var STORAGE_KEY = 'tafkir_conversations_v2';
+
+    // ── Conversation store ──────────────────────────────────
+    // { conversations: [{id,title,history,messages,createdAt}], activeId: string }
+    var store = loadStore();
 
     // ── DOM refs ────────────────────────────────────────────
-    var toggle   = document.getElementById('chatbot-toggle');
-    var window_  = document.getElementById('chatbot-window');
-    var messages = document.getElementById('chatbot-messages');
-    var input    = document.getElementById('chatbot-input');
-    var sendBtn  = document.getElementById('chatbot-send');
-    var clearBtn = document.getElementById('chatbot-clear');
-    var closeBtn = document.getElementById('chatbot-close');
-    var minBtn   = document.getElementById('chatbot-minimize');
-    var badge    = document.getElementById('chatbot-badge');
-    var suggBtns = document.querySelectorAll('.suggestion-btn');
+    var toggle      = document.getElementById('chatbot-toggle');
+    var windowEl    = document.getElementById('chatbot-window');
+    var msgArea     = document.getElementById('chatbot-messages');
+    var inputEl     = document.getElementById('chatbot-input');
+    var sendBtn     = document.getElementById('chatbot-send');
+    var badge       = document.getElementById('chatbot-badge');
+    var convList    = document.getElementById('chatbot-conv-list');
+    var newChatBtn  = document.getElementById('chatbot-new-chat');
+    var closeBtn    = document.getElementById('chatbot-close');
+    var minBtn      = document.getElementById('chatbot-minimize');
+    var suggsEl     = document.getElementById('chatbot-suggestions');
+
+    var isLoading   = false;
+    var isMinimized = false;
+
+    // ── Init ────────────────────────────────────────────────
+    if (!store.activeId || !getConv(store.activeId)) {
+        var first = store.conversations[0];
+        if (first) {
+            store.activeId = first.id;
+        } else {
+            createNewConversation();
+        }
+    }
+    renderConvList();
+    renderMessages();
 
     // ── Toggle window ────────────────────────────────────────
     toggle.addEventListener('click', function () {
-        var isVisible = window_.style.display !== 'none';
-        window_.style.display = isVisible ? 'none' : 'flex';
-        toggle.classList.toggle('active', !isVisible);
+        var visible = windowEl.style.display !== 'none';
+        windowEl.style.display = visible ? 'none' : 'flex';
+        toggle.classList.toggle('active', !visible);
         badge.style.display = 'none';
-        if (!isVisible) {
-            input.focus();
-            scrollToBottom();
-        }
+        if (!visible) { inputEl.focus(); scrollToBottom(); }
     });
 
     closeBtn.addEventListener('click', function () {
-        window_.style.display = 'none';
+        windowEl.style.display = 'none';
         toggle.classList.remove('active');
     });
 
     minBtn.addEventListener('click', function () {
         isMinimized = !isMinimized;
-        messages.style.display = isMinimized ? 'none' : '';
-        document.getElementById('chatbot-suggestions').style.display = isMinimized ? 'none' : '';
-        document.getElementById('chatbot-input-area').style.display = isMinimized ? 'none' : '';
+        document.getElementById('chatbot-main').style.display = isMinimized ? 'none' : 'flex';
+        document.getElementById('chatbot-sidebar').style.display = isMinimized ? 'none' : 'flex';
         minBtn.innerHTML = isMinimized ? '&#9633;' : '&#8211;';
+        windowEl.style.height = isMinimized ? 'auto' : '';
     });
 
-    // ── Clear / new conversation ──────────────────────────────
-    clearBtn.addEventListener('click', function () {
-        history = [];
-        messages.innerHTML = '';
-        addBotMessage('Nouvelle conversation démarrée. Comment puis-je vous aider ?');
-        document.getElementById('chatbot-suggestions').style.display = 'flex';
+    // ── New conversation ──────────────────────────────────────
+    newChatBtn.addEventListener('click', function () {
+        createNewConversation();
+        renderConvList();
+        renderMessages();
+        inputEl.focus();
     });
 
-    // ── Suggestion buttons ────────────────────────────────────
-    suggBtns.forEach(function (btn) {
+    // ── Suggestions ───────────────────────────────────────────
+    document.querySelectorAll('.suggestion-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            var msg = this.getAttribute('data-msg');
-            document.getElementById('chatbot-suggestions').style.display = 'none';
-            sendMessage(msg);
+            suggsEl.style.display = 'none';
+            sendMessage(this.getAttribute('data-msg'));
         });
     });
 
-    // ── Send on Enter (Shift+Enter = newline) ─────────────────
-    input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            doSend();
-        }
+    // ── Input ─────────────────────────────────────────────────
+    inputEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
     });
     sendBtn.addEventListener('click', doSend);
-
-    // Auto-resize textarea
-    input.addEventListener('input', function () {
+    inputEl.addEventListener('input', function () {
         this.style.height = 'auto';
         this.style.height = Math.min(this.scrollHeight, 120) + 'px';
     });
 
-    // ── Core send logic ───────────────────────────────────────
+    // ── Send ──────────────────────────────────────────────────
     function doSend() {
-        var text = input.value.trim();
+        var text = inputEl.value.trim();
         if (!text || isLoading) return;
-        input.value = '';
-        input.style.height = 'auto';
-        document.getElementById('chatbot-suggestions').style.display = 'none';
+        inputEl.value = '';
+        inputEl.style.height = 'auto';
+        suggsEl.style.display = 'none';
         sendMessage(text);
     }
 
     function sendMessage(text) {
-        addUserMessage(text);
-        history.push({ role: 'user', content: text });
+        var conv = getActive();
+        if (!conv) return;
+
+        // Auto-title from first user message
+        if (!conv.title || conv.title === 'Nouvelle conversation') {
+            conv.title = text.length > 40 ? text.substring(0, 40) + '…' : text;
+            renderConvList();
+        }
+
+        appendMsg('user', text, conv);
+        conv.history.push({ role: 'user', content: text });
+        saveStore();
 
         isLoading = true;
         sendBtn.disabled = true;
-        var typingId = addTypingIndicator();
+        var typingId = addTyping();
 
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', CHATBOT_AJAX_URL, true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.timeout = 90000;
+        // Limit history sent to API (last 16 messages for speed)
+        var historyToSend = conv.history.slice(0, -1);
+        if (historyToSend.length > 16) historyToSend = historyToSend.slice(-16);
 
-        xhr.onload = function () {
-            removeTypingIndicator(typingId);
-            isLoading = false;
-            sendBtn.disabled = false;
+        fetch(CHATBOT_AJAX_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: text,
+                history: historyToSend,
+                token: (typeof CHATBOT_TOKEN !== 'undefined') ? CHATBOT_TOKEN : ''
+            })
+        }).then(function (response) {
+            var ct = response.headers.get('Content-Type') || '';
 
-            try {
-                var data = JSON.parse(xhr.responseText);
-                if (data.success) {
-                    addBotMessage(data.message);
-                    history.push({ role: 'assistant', content: data.message });
-                    // Keep history at max 20 exchanges to avoid huge payloads
-                    if (history.length > 40) history = history.slice(-40);
-                } else {
-                    addErrorMessage(data.error || 'Une erreur est survenue.');
+            if (ct.indexOf('text/event-stream') !== -1) {
+                // ── Streaming response (OpenRouter/OpenAI) ──────
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var sseBuf = '';
+                var fullText = '';
+                var botDiv = null, contentDiv = null, timeDiv = null;
+                var done = false;
+
+                function finish() {
+                    if (done) return;
+                    done = true;
+                    removeTyping(typingId);
+                    isLoading = false;
+                    sendBtn.disabled = false;
+                    if (fullText && botDiv) {
+                        conv.messages.push({ cls: botDiv.className, html: contentDiv.outerHTML + timeDiv.outerHTML });
+                        conv.history.push({ role: 'assistant', content: fullText });
+                        if (conv.history.length > 20) conv.history = conv.history.slice(-20);
+                        saveStore();
+                        if (windowEl.style.display === 'none') badge.style.display = 'flex';
+                    } else if (!fullText) {
+                        appendMsg('error', 'Aucune réponse reçue. Réessayez.', conv);
+                    }
                 }
-            } catch (e) {
-                addErrorMessage('Réponse invalide du serveur.');
+
+                function pump() {
+                    return reader.read().then(function (result) {
+                        if (result.done) { finish(); return; }
+                        sseBuf += decoder.decode(result.value, { stream: true });
+                        var lines = sseBuf.split('\n');
+                        sseBuf = lines.pop();
+                        for (var i = 0; i < lines.length; i++) {
+                            var line = lines[i].trim();
+                            if (line.indexOf('data: ') !== 0) continue;
+                            var data = line.slice(6);
+                            if (data === '[DONE]') { finish(); return; }
+                            try {
+                                var json = JSON.parse(data);
+                                if (json.error) {
+                                    done = true;
+                                    removeTyping(typingId);
+                                    isLoading = false; sendBtn.disabled = false;
+                                    appendMsg('error', json.error, conv);
+                                    return;
+                                }
+                                if (json.token) {
+                                    if (!botDiv) {
+                                        removeTyping(typingId);
+                                        botDiv = document.createElement('div');
+                                        botDiv.className = 'chat-message bot-message';
+                                        contentDiv = document.createElement('div');
+                                        contentDiv.className = 'message-content';
+                                        timeDiv = document.createElement('div');
+                                        timeDiv.className = 'message-time';
+                                        timeDiv.textContent = getTime();
+                                        botDiv.appendChild(contentDiv);
+                                        botDiv.appendChild(timeDiv);
+                                        msgArea.appendChild(botDiv);
+                                    }
+                                    fullText += json.token;
+                                    contentDiv.innerHTML = renderMarkdown(fullText);
+                                    scrollToBottom();
+                                }
+                            } catch (e) {}
+                        }
+                        return pump();
+                    }).catch(function () {
+                        removeTyping(typingId);
+                        isLoading = false; sendBtn.disabled = false;
+                        if (!done) appendMsg('error', 'Erreur de connexion.', conv);
+                        done = true;
+                    });
+                }
+                pump();
+
+            } else {
+                // ── JSON response (Anthropic / erreurs) ─────────
+                removeTyping(typingId);
+                isLoading = false; sendBtn.disabled = false;
+                response.json().then(function (data) {
+                    if (data.success) {
+                        appendMsg('bot', data.message, conv);
+                        conv.history.push({ role: 'assistant', content: data.message });
+                        if (conv.history.length > 20) conv.history = conv.history.slice(-20);
+                        saveStore();
+                    } else {
+                        appendMsg('error', data.error || 'Une erreur est survenue.', conv);
+                    }
+                }).catch(function () {
+                    appendMsg('error', 'Réponse invalide du serveur.', conv);
+                });
             }
-        };
-
-        xhr.onerror = function () {
-            removeTypingIndicator(typingId);
-            isLoading = false;
-            sendBtn.disabled = false;
-            addErrorMessage('Erreur réseau. Vérifiez votre connexion.');
-        };
-
-        xhr.ontimeout = function () {
-            removeTypingIndicator(typingId);
-            isLoading = false;
-            sendBtn.disabled = false;
-            addErrorMessage('Délai d\'attente dépassé. Réessayez.');
-        };
-
-        // Send history WITHOUT the last user message (already in new_message)
-        var historyToSend = history.slice(0, -1);
-
-        xhr.send(JSON.stringify({
-            message: text,
-            history: historyToSend,
-            token: (typeof CHATBOT_TOKEN !== 'undefined') ? CHATBOT_TOKEN : '',
-        }));
+        }).catch(function () {
+            removeTyping(typingId);
+            isLoading = false; sendBtn.disabled = false;
+            appendMsg('error', 'Erreur réseau.', conv);
+        });
     }
 
-    // ── DOM helpers ───────────────────────────────────────────
-    function addUserMessage(text) {
-        var div = document.createElement('div');
-        div.className = 'chat-message user-message';
-        div.innerHTML = '<div class="message-content">' + escapeHtml(text) + '</div>'
-                      + '<div class="message-time">' + getTime() + '</div>';
-        messages.appendChild(div);
-        scrollToBottom();
+    // ── Conversation helpers ───────────────────────────────────
+    function createNewConversation() {
+        var id = 'conv_' + Date.now();
+        var conv = { id: id, title: 'Nouvelle conversation', history: [], messages: [], createdAt: Date.now() };
+        store.conversations.unshift(conv);
+        store.activeId = id;
+        saveStore();
+        return conv;
     }
 
-    function addBotMessage(text) {
-        var div = document.createElement('div');
-        div.className = 'chat-message bot-message';
-        div.innerHTML = '<div class="message-content">' + renderMarkdown(text) + '</div>'
-                      + '<div class="message-time">' + getTime() + '</div>';
-        messages.appendChild(div);
-        scrollToBottom();
+    function getConv(id) {
+        return store.conversations.find(function (c) { return c.id === id; });
+    }
 
-        // Show badge if window is hidden
-        if (window_.style.display === 'none') {
-            badge.style.display = 'flex';
+    function getActive() { return getConv(store.activeId); }
+
+    function switchConv(id) {
+        store.activeId = id;
+        saveStore();
+        renderConvList();
+        renderMessages();
+        suggsEl.style.display = getActive().messages.length === 0 ? 'flex' : 'none';
+        scrollToBottom();
+        inputEl.focus();
+    }
+
+    function deleteConv(id) {
+        store.conversations = store.conversations.filter(function (c) { return c.id !== id; });
+        if (store.activeId === id) {
+            if (store.conversations.length === 0) createNewConversation();
+            store.activeId = store.conversations[0].id;
         }
+        saveStore();
+        renderConvList();
+        renderMessages();
     }
 
-    function addErrorMessage(text) {
-        var div = document.createElement('div');
-        div.className = 'chat-message error-message';
-        div.innerHTML = '<div class="message-content">⚠️ ' + escapeHtml(text) + '</div>';
-        messages.appendChild(div);
+    // ── Render sidebar ─────────────────────────────────────────
+    function renderConvList() {
+        convList.innerHTML = '';
+        store.conversations.forEach(function (conv) {
+            var item = document.createElement('div');
+            item.className = 'conv-item' + (conv.id === store.activeId ? ' active' : '');
+            item.setAttribute('data-id', conv.id);
+
+            var titleSpan = document.createElement('span');
+            titleSpan.className = 'conv-title';
+            titleSpan.textContent = conv.title || 'Nouvelle conversation';
+            titleSpan.title = conv.title || 'Nouvelle conversation';
+
+            var delBtn = document.createElement('button');
+            delBtn.className = 'conv-delete';
+            delBtn.innerHTML = '&#10005;';
+            delBtn.title = 'Supprimer';
+            delBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (confirm('Supprimer cette conversation ?')) deleteConv(conv.id);
+            });
+
+            item.appendChild(titleSpan);
+            item.appendChild(delBtn);
+            item.addEventListener('click', function () { switchConv(conv.id); });
+            convList.appendChild(item);
+        });
+    }
+
+    // ── Render messages for active conv ────────────────────────
+    function renderMessages() {
+        var conv = getActive();
+        if (!conv) return;
+        msgArea.innerHTML = '';
+
+        if (conv.messages.length === 0) {
+            // Conversation vide — juste les suggestions
+            suggsEl.style.display = 'flex';
+        } else {
+            suggsEl.style.display = 'none';
+            conv.messages.forEach(function (m) {
+                var div = document.createElement('div');
+                div.className = m.cls;
+                div.innerHTML = m.html;
+                msgArea.appendChild(div);
+            });
+        }
         scrollToBottom();
     }
 
-    function addTypingIndicator() {
+    // ── Append a message (display + persist) ───────────────────
+    function appendMsg(type, content, conv) {
+        var div = document.createElement('div');
+        var time = '<div class="message-time">' + getTime() + '</div>';
+        var html, cls;
+
+        if (type === 'user') {
+            cls = 'chat-message user-message';
+            html = '<div class="message-content">' + escapeHtml(content) + '</div>' + time;
+        } else if (type === 'bot') {
+            cls = 'chat-message bot-message';
+            html = '<div class="message-content">' + renderMarkdown(content) + '</div>' + time;
+            if (windowEl.style.display === 'none') badge.style.display = 'flex';
+        } else {
+            cls = 'chat-message error-message';
+            html = '<div class="message-content">&#9888; ' + escapeHtml(content) + '</div>';
+        }
+
+        div.className = cls;
+        div.innerHTML = html;
+        msgArea.appendChild(div);
+
+        // Persist rendered message
+        conv.messages.push({ cls: cls, html: html });
+        scrollToBottom();
+    }
+
+    // ── Typing indicator ──────────────────────────────────────
+    function addTyping() {
         var id = 'typing-' + Date.now();
         var div = document.createElement('div');
-        div.className = 'chat-message bot-message typing-message';
         div.id = id;
+        div.className = 'chat-message bot-message';
         div.innerHTML = '<div class="message-content"><span class="typing-dots"><span></span><span></span><span></span></span></div>';
-        messages.appendChild(div);
+        msgArea.appendChild(div);
         scrollToBottom();
         return id;
     }
+    function removeTyping(id) { var el = document.getElementById(id); if (el) el.remove(); }
 
-    function removeTypingIndicator(id) {
-        var el = document.getElementById(id);
-        if (el) el.remove();
+    // ── Storage ───────────────────────────────────────────────
+    function loadStore() {
+        try {
+            var s = localStorage.getItem(STORAGE_KEY);
+            if (s) {
+                var parsed = JSON.parse(s);
+                if (parsed && Array.isArray(parsed.conversations)) return parsed;
+            }
+        } catch (e) {}
+        return { conversations: [], activeId: null };
+    }
+    function saveStore() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) {}
     }
 
+    // ── Utils ─────────────────────────────────────────────────
     function scrollToBottom() {
-        setTimeout(function () {
-            messages.scrollTop = messages.scrollHeight;
-        }, 50);
+        setTimeout(function () { msgArea.scrollTop = msgArea.scrollHeight; }, 60);
     }
-
     function getTime() {
         var d = new Date();
         return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
     }
-
-    // ── Security: HTML escape ──────────────────────────────────
-    function escapeHtml(text) {
-        return text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+    function escapeHtml(t) {
+        return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
     }
 
-    // ── Minimal Markdown renderer (tables, bold, italic, code, lists) ──
+    // ── Markdown renderer ─────────────────────────────────────
     function renderMarkdown(text) {
-        // Sanitize first
-        text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
+        text = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         // Code blocks
-        text = text.replace(/```([\s\S]*?)```/g, function(_, code) {
-            return '<pre><code>' + code.trim() + '</code></pre>';
-        });
-        // Inline code
+        text = text.replace(/```([\s\S]*?)```/g, function(_,c){ return '<pre><code>'+c.trim()+'</code></pre>'; });
         text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-        // Tables (GFM)
-        text = text.replace(/(\|.+\|\n)(\|[-|: ]+\|\n)((\|.+\|\n)*)/g, function(match) {
+        // Tables
+        text = text.replace(/(\|.+\|\n)(\|[-|: ]+\|\n)((\|.+\|\n?)*)/g, function(match) {
             var lines = match.trim().split('\n').filter(Boolean);
-            var html = '<table class="chat-table"><thead><tr>';
-            var headers = lines[0].split('|').filter(function(c){ return c.trim() !== ''; });
-            headers.forEach(function(h){ html += '<th>' + h.trim() + '</th>'; });
+            var html = '<div class="chat-table-wrapper"><table class="chat-table"><thead><tr>';
+            lines[0].split('|').filter(function(c){return c.trim()!=='';}).forEach(function(h){html+='<th>'+h.trim()+'</th>';});
             html += '</tr></thead><tbody>';
-            for (var i = 2; i < lines.length; i++) {
-                var cells = lines[i].split('|').filter(function(c){ return c.trim() !== ''; });
-                html += '<tr>';
-                cells.forEach(function(c){ html += '<td>' + c.trim() + '</td>'; });
-                html += '</tr>';
+            for (var i=2;i<lines.length;i++){
+                var cells=lines[i].split('|').filter(function(c){return c.trim()!=='';});
+                if(!cells.length) continue;
+                html+='<tr>';
+                cells.forEach(function(c){html+='<td>'+c.trim()+'</td>';});
+                html+='</tr>';
             }
-            html += '</tbody></table>';
-            return html;
+            return html+'</tbody></table></div>';
         });
-
-        // Bold
-        text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        // Italic
-        text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
+        // Bold / italic
+        text = text.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+        text = text.replace(/\*(.+?)\*/g,'<em>$1</em>');
         // Headers
-        text = text.replace(/^### (.+)$/gm, '<h4>$1</h4>');
-        text = text.replace(/^## (.+)$/gm, '<h3>$1</h3>');
-        text = text.replace(/^# (.+)$/gm, '<h2>$1</h2>');
-
-        // Unordered lists
-        text = text.replace(/(^[*\-] .+$(\n[*\-] .+$)*)/gm, function(block) {
-            var items = block.split('\n').map(function(l){ return '<li>' + l.replace(/^[*\-] /, '') + '</li>'; });
-            return '<ul>' + items.join('') + '</ul>';
+        text = text.replace(/^### (.+)$/gm,'<h4>$1</h4>');
+        text = text.replace(/^## (.+)$/gm,'<h3>$1</h3>');
+        text = text.replace(/^# (.+)$/gm,'<h2>$1</h2>');
+        // Lists
+        text = text.replace(/(^[*\-] .+$(\n[*\-] .+$)*)/gm,function(b){
+            return '<ul>'+b.split('\n').map(function(l){return '<li>'+l.replace(/^[*\-] /,'')+'</li>';}).join('')+'</ul>';
         });
-
-        // Ordered lists
-        text = text.replace(/(^\d+\. .+$(\n\d+\. .+$)*)/gm, function(block) {
-            var items = block.split('\n').map(function(l){ return '<li>' + l.replace(/^\d+\. /, '') + '</li>'; });
-            return '<ol>' + items.join('') + '</ol>';
+        text = text.replace(/(^\d+\. .+$(\n\d+\. .+$)*)/gm,function(b){
+            return '<ol>'+b.split('\n').map(function(l){return '<li>'+l.replace(/^\d+\. /,'')+'</li>';}).join('')+'</ol>';
         });
-
-        // Line breaks
-        text = text.replace(/\n\n/g, '</p><p>');
-        text = text.replace(/\n/g, '<br>');
-        text = '<p>' + text + '</p>';
-
-        // Clean empty paragraphs
-        text = text.replace(/<p><\/p>/g, '');
-        text = text.replace(/<p>(<[ht][1-6r]|<ul|<ol|<pre|<table)/g, '$1');
-        text = text.replace(/(<\/[ht][1-6r]>|<\/ul>|<\/ol>|<\/pre>|<\/table>)<\/p>/g, '$1');
-
+        // Paragraphs
+        text = text.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
+        text = '<p>'+text+'</p>';
+        text = text.replace(/<p><\/p>/g,'');
+        text = text.replace(/<p>(<[ht][1-6r]|<ul|<ol|<pre|<div)/g,'$1');
+        text = text.replace(/(<\/[ht][1-6r]>|<\/ul>|<\/ol>|<\/pre>|<\/div>)<\/p>/g,'$1');
         return text;
     }
 

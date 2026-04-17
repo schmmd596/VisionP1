@@ -70,17 +70,17 @@ $models = [
 // ── Page render ────────────────────────────────────────────
 llxHeader('', 'Configuration Chatbot IA', '');
 
-print load_fiche_titre('🤖 Configuration du Chatbot IA', '', 'fa-robot');
+print load_fiche_titre('Configuration du Tafkir AI', '', 'fa-robot');
 
 // Status banner
-if (empty($current_key)) {
-    print '<div class="warning"><strong>Clé API manquante.</strong> Le chatbot ne fonctionnera pas sans clé API.</div>';
-} elseif ($current_enabled === '1') {
-    $provider_labels = ['openrouter'=>'OpenRouter (sk-or-...)', 'anthropic'=>'Anthropic (sk-ant-...)', 'openai'=>'OpenAI (sk-...)'];
-    print '<div class="ok"><strong>Chatbot actif.</strong> Provider détecté : <strong>'.$provider_labels[$detected_provider].'</strong></div>';
-} else {
-    print '<div class="warning"><strong>Chatbot désactivé</strong> dans les paramètres.</div>';
-}
+// if (empty($current_key)) {
+//     print '<div class="warning"><strong>Clé API manquante.</strong> Le chatbot ne fonctionnera pas sans clé API.</div>';
+// } elseif ($current_enabled === '1') {
+//     $provider_labels = ['openrouter'=>'OpenRouter (sk-or-...)', 'anthropic'=>'Anthropic (sk-ant-...)', 'openai'=>'OpenAI (sk-...)'];
+//     print '<div class="ok"><strong>Chatbot actif.</strong> Provider détecté : <strong>'.$provider_labels[$detected_provider].'</strong></div>';
+// } else {
+//     print '<div class="warning"><strong>Chatbot désactivé</strong> dans les paramètres.</div>';
+// }
 
 ?>
 <br>
@@ -98,7 +98,7 @@ if (empty($current_key)) {
 
 <!-- API Key -->
 <tr class="oddeven">
-    <td class="fieldrequired" style="width:30%"><strong>Clé API Anthropic</strong></td>
+    <td class="fieldrequired" style="width:30%"><strong>Clé API </strong></td>
     <td>
         <input type="password" name="CHATBOT_API_KEY" id="CHATBOT_API_KEY"
                value="<?php echo htmlspecialchars($current_key); ?>"
@@ -106,15 +106,15 @@ if (empty($current_key)) {
                placeholder="sk-ant-api03-...">
         <button type="button" onclick="toggleKey()" class="button smallpaddingimp">Afficher</button>
     </td>
-    <td>
+    <!-- <td>
         Obtenez votre clé sur
         <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>
-    </td>
+    </td> -->
 </tr>
 
 <!-- Model -->
 <tr class="oddeven">
-    <td><strong>Modèle Claude</strong></td>
+    <td><strong>Modèle</strong></td>
     <td>
         <select name="CHATBOT_MODEL" class="flat" style="min-width:300px">
             <?php foreach ($models as $id => $label): ?>
@@ -164,47 +164,23 @@ if (empty($current_key)) {
 <br>
 <table class="noborder centpercent">
 <thead>
-<tr class="liste_titre">
+<!-- <tr class="liste_titre">
     <th>Test de connexion à l'API</th>
-</tr>
+</tr> -->
 </thead>
 <tbody>
 <tr class="oddeven">
-<td>
+<!-- <td>
     <button type="button" class="button" onclick="testApi()">🔌 Tester la connexion API</button>
     <span id="test-result" style="margin-left:15px;font-weight:600"></span>
-</td>
+</td> -->
 </tr>
 </tbody>
 </table>
 
 <!-- Capabilities documentation -->
 <br>
-<table class="noborder centpercent">
-<thead>
-<tr class="liste_titre">
-    <th colspan="2">Fonctionnalités disponibles dans le chatbot</th>
-</tr>
-</thead>
-<tbody>
-<?php
-$features = [
-    ['🔍 Recherche en temps réel', 'Produits, clients, fournisseurs - données directement depuis la base Dolibarr'],
-    ['📊 Statistiques', 'CA, factures impayées, stock faible - par jour/semaine/mois/année'],
-    ['📄 Factures clients', 'Créer, avec sélection automatique du client et des produits'],
-    ['📄 Factures fournisseurs', 'Créer avec référence fournisseur et lignes détaillées'],
-    ['➕ Produits', 'Ajouter de nouveaux produits avec catégorie, prix, TVA'],
-    ['📋 Historique factures', 'Consulter les dernières factures clients et fournisseurs'],
-    ['🌐 Multilingue', 'Répond en français, arabe, anglais selon la question posée'],
-];
-foreach ($features as $f): ?>
-<tr class="oddeven">
-    <td style="width:35%;font-weight:600"><?php echo $f[0]; ?></td>
-    <td><?php echo $f[1]; ?></td>
-</tr>
-<?php endforeach; ?>
-</tbody>
-</table>
+
 
 <script>
 function toggleKey() {
@@ -217,30 +193,63 @@ function testApi() {
     result.style.color = '#888';
     result.textContent = 'Test en cours...';
 
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '<?php echo dol_buildpath('/chatbot/ajax/chat.php', 1); ?>', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.timeout = 15000;
-    xhr.onload = function() {
-        try {
-            var data = JSON.parse(xhr.responseText);
-            if (data.success) {
-                result.style.color = '#22c55e';
-                result.textContent = '✅ Connexion réussie ! L\'API répond correctement.';
-            } else {
-                result.style.color = '#ef4444';
-                result.textContent = '❌ Erreur: ' + (data.error || 'Inconnue');
+    fetch('<?php echo dol_buildpath('/chatbot/ajax/chat.php', 1); ?>', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Dis juste OK', history: [] })
+    }).then(function(response) {
+        var ct = response.headers.get('Content-Type') || '';
+        if (ct.indexOf('text/event-stream') !== -1) {
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+            var buf = '', text = '';
+            function pump() {
+                return reader.read().then(function(res) {
+                    if (res.done) {
+                        result.style.color = text ? '#22c55e' : '#ef4444';
+                        result.textContent = text ? '✅ Connexion réussie !' : '❌ Aucune réponse';
+                        return;
+                    }
+                    buf += decoder.decode(res.value, { stream: true });
+                    var lines = buf.split('\n'); buf = lines.pop();
+                    for (var i = 0; i < lines.length; i++) {
+                        var l = lines[i].trim();
+                        if (l.indexOf('data: ') !== 0) continue;
+                        var d = l.slice(6);
+                        if (d === '[DONE]') {
+                            result.style.color = text ? '#22c55e' : '#ef4444';
+                            result.textContent = text ? '✅ Connexion réussie !' : '❌ Aucune réponse';
+                            return;
+                        }
+                        try {
+                            var j = JSON.parse(d);
+                            if (j.token) text += j.token;
+                            if (j.error) {
+                                result.style.color = '#ef4444';
+                                result.textContent = '❌ Erreur: ' + j.error;
+                                return;
+                            }
+                        } catch(e) {}
+                    }
+                    return pump();
+                });
             }
-        } catch(e) {
-            result.style.color = '#ef4444';
-            result.textContent = '❌ Réponse invalide du serveur';
+            pump();
+        } else {
+            return response.json().then(function(data) {
+                if (data.success) {
+                    result.style.color = '#22c55e';
+                    result.textContent = '✅ Connexion réussie !';
+                } else {
+                    result.style.color = '#ef4444';
+                    result.textContent = '❌ Erreur: ' + (data.error || 'Inconnue');
+                }
+            });
         }
-    };
-    xhr.onerror = xhr.ontimeout = function() {
+    }).catch(function() {
         result.style.color = '#ef4444';
         result.textContent = '❌ Impossible de contacter le serveur';
-    };
-    xhr.send(JSON.stringify({message: 'Réponds juste "OK" pour confirmer que tu fonctionnes.', history: []}));
+    });
 }
 </script>
 

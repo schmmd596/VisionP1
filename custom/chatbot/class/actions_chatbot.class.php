@@ -31,19 +31,22 @@ class ActionsChatbot
         $url_base = dol_buildpath('/chatbot', 1);
         $ajax_url = dol_buildpath('/chatbot/ajax/chat.php', 1);
 
-        // Echo directement - printCommonFooter() ne lit pas $hookmanager->resPrint
         echo '
-        <!-- ===== Chatbot IA Widget ===== -->
-        <link rel="stylesheet" href="'.$url_base.'/css/widget.css?v=1.0.3">
+        <!-- ===== Tafkir IA Widget ===== -->
+        <link rel="stylesheet" href="'.$url_base.'/css/widget.css?v=3.0.0">
 
-        <div id="chatbot-toggle" title="Assistant IA">
+        <!-- Bouton flottant -->
+        <div id="chatbot-toggle" title="Tafkir IA">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
             <span id="chatbot-badge" style="display:none">1</span>
         </div>
 
+        <!-- Fenetre principale -->
         <div id="chatbot-window" style="display:none;">
+
+            <!-- Header -->
             <div id="chatbot-header">
                 <div id="chatbot-header-info">
                     <div id="chatbot-avatar">
@@ -57,51 +60,79 @@ class ActionsChatbot
                     </div>
                 </div>
                 <div id="chatbot-header-actions">
-                    <button id="chatbot-clear" title="Nouvelle conversation">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="1 4 1 10 7 10"></polyline>
-                            <path d="M3.51 15a9 9 0 1 0 .49-3.85"></path>
-                        </svg>
-                    </button>
                     <button id="chatbot-minimize" title="Reduire">&#8211;</button>
                     <button id="chatbot-close" title="Fermer">&#215;</button>
                 </div>
             </div>
 
-            <div id="chatbot-messages">
-                <div class="chat-message bot-message">
-                    <div class="message-content">
-                        Bonjour ! Je suis votre Tafkir IA.<br>
-                        Comment puis-je vous aider ?
-                    </div>
-                    <div class="message-time">Maintenant</div>
+            <!-- Corps : sidebar + zone messages -->
+            <div id="chatbot-body">
+
+                <!-- Sidebar conversations -->
+                <div id="chatbot-sidebar">
+                    <button id="chatbot-new-chat" title="Nouvelle conversation">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Nouveau chat
+                    </button>
+                    <div id="chatbot-conv-list"></div>
                 </div>
-            </div>
 
-            <div id="chatbot-suggestions">
-                <button class="suggestion-btn" data-msg="Montre-moi la liste des produits">Produits</button>
-                <button class="suggestion-btn" data-msg="Liste des clients">Clients</button>
-                <button class="suggestion-btn" data-msg="Creer une facture client">Facture client</button>
-                <button class="suggestion-btn" data-msg="Statistiques du mois">Stats</button>
-            </div>
+                <!-- Zone principale -->
+                <div id="chatbot-main">
+                    <div id="chatbot-messages"></div>
 
-            <div id="chatbot-input-area">
-                <textarea id="chatbot-input" placeholder="Ecrivez votre message..." rows="1"></textarea>
-                <button id="chatbot-send" title="Envoyer">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                    </svg>
-                </button>
-            </div>
-        </div>
+                    <div id="chatbot-suggestions">
+                        <div class="suggestions-grid">
+                            <button class="suggestion-btn" data-msg="Montre-moi les statistiques du mois">
+                                <span class="sugg-icon">&#128202;</span>
+                                <span class="sugg-text">Statistiques</span>
+                            </button>
+                            <button class="suggestion-btn" data-msg="Liste des factures impayees">
+                                <span class="sugg-icon">&#128196;</span>
+                                <span class="sugg-text">Impayees</span>
+                            </button>
+                            <button class="suggestion-btn" data-msg="Solde des comptes bancaires">
+                                <span class="sugg-icon">&#127974;</span>
+                                <span class="sugg-text">Banque</span>
+                            </button>
+                            <button class="suggestion-btn" data-msg="Creer une facture client">
+                                <span class="sugg-icon">&#10133;</span>
+                                <span class="sugg-text">Facture</span>
+                            </button>
+                            <button class="suggestion-btn" data-msg="Comment enregistrer un achat de marchandises selon le plan comptable mauritanien ?">
+                                <span class="sugg-icon">&#128218;</span>
+                                <span class="sugg-text">Comptabilite</span>
+                            </button>
+                            <button class="suggestion-btn" data-msg="Quel est le taux de TVA applicable en Mauritanie et comment la declarer ?">
+                                <span class="sugg-icon">&#128176;</span>
+                                <span class="sugg-text">Fiscalite</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="chatbot-input-area">
+                        <textarea id="chatbot-input" placeholder="Ecrivez votre message..." rows="1"></textarea>
+                        <button id="chatbot-send" title="Envoyer">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+            </div><!-- end chatbot-body -->
+        </div><!-- end chatbot-window -->
 
         <script>
             var CHATBOT_AJAX_URL = "' . $ajax_url . '";
             var CHATBOT_TOKEN   = "' . newToken() . '";
         </script>
-        <script src="' . $url_base . '/js/widget.js?v=1.0.3"></script>
-        <!-- ===== Fin Chatbot IA Widget ===== -->
+        <script src="' . $url_base . '/js/widget.js?v=3.0.0"></script>
+        <!-- ===== Fin Tafkir IA Widget ===== -->
         ';
 
         return 0;
