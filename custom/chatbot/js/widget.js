@@ -22,8 +22,20 @@
     var closeBtn    = document.getElementById('chatbot-close');
     var minBtn      = document.getElementById('chatbot-minimize');
 
+    // ── Upload & Audio refs ──────────────────────────────────
+    var uploadBtn   = document.getElementById('chatbot-upload-btn');
+    var fileInput   = document.getElementById('chatbot-file-input');
+    var micBtn      = document.getElementById('chatbot-mic-btn');
+    var recordingInd = document.getElementById('chatbot-recording-indicator');
+    var recordingTime = document.getElementById('chatbot-recording-time');
+    var filePreview = document.getElementById('chatbot-file-preview');
+
     var isLoading   = false;
     var isMinimized = false;
+    var isRecording = false;
+    var mediaRecorder = null;
+    var audioChunks = [];
+    var recordingStartTime = 0;
 
     // ── Init ────────────────────────────────────────────────
     if (!store.activeId || !getConv(store.activeId)) {
@@ -81,6 +93,36 @@
         this.style.height = 'auto';
         this.style.height = Math.min(this.scrollHeight, 120) + 'px';
     });
+
+    // ── Upload ────────────────────────────────────────────────
+    if (uploadBtn) {
+        uploadBtn.addEventListener('click', function () { fileInput.click(); });
+    }
+    if (fileInput) {
+        fileInput.addEventListener('change', function () {
+            if (this.files && this.files[0]) {
+                handleFileSelect(this.files[0]);
+            }
+        });
+    }
+
+    // ── Audio Recording ───────────────────────────────────────
+    if (micBtn) {
+        micBtn.addEventListener('click', toggleAudioRecording);
+    }
+
+    // Drag & Drop for messages area
+    if (msgArea) {
+        msgArea.addEventListener('dragover', function (e) { e.preventDefault(); this.style.backgroundColor = 'rgba(79,70,229,.05)'; });
+        msgArea.addEventListener('dragleave', function () { this.style.backgroundColor = ''; });
+        msgArea.addEventListener('drop', function (e) {
+            e.preventDefault();
+            this.style.backgroundColor = '';
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+    }
 
     // ── Send ──────────────────────────────────────────────────
     function doSend() {
@@ -360,9 +402,300 @@
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) {}
     }
 
+    // ── File Upload Handler ─────────────────────────────────
+    function handleFileSelect(file) {
+        var validExts = ['png', 'jpg', 'jpeg', 'pdf'];
+        var ext = file.name.split('.').pop().toLowerCase();
+        var maxSize = 25 * 1024 * 1024;
+
+        if (!validExts.includes(ext)) {
+            appendMsg('error', '❌ Type de fichier non autorisé. Acceptés: PNG, JPG, JPEG, PDF', getActive());
+            return;
+        }
+
+        if (file.size > maxSize) {
+            appendMsg('error', '❌ Fichier trop volumineux (max 25 MB)', getActive());
+            return;
+        }
+
+        // Show file preview
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var previewHtml = '';
+            if (ext === 'pdf') {
+                previewHtml = '<div class="file-preview-item"><strong>📄 ' + file.name + '</strong> (' + formatFileSize(file.size) + ')</div>';
+            } else {
+                previewHtml = '<img src="' + e.target.result + '" class="file-preview-img" />';
+            }
+            filePreview.innerHTML = previewHtml;
+            filePreview.style.display = 'block';
+
+            // Auto-send the file
+            sendFile(file, inputEl.value.trim());
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function sendFile(file, message) {
+        var conv = getActive();
+        if (!conv) return;
+
+        isLoading = true;
+        sendBtn.disabled = true;
+        var typingId = addTyping();
+
+        var formData = new FormData();
+        formData.append('file', file);
+        if (message) formData.append('message', message);
+
+        fetch(CHATBOT_AJAX_URL.replace('/chat.php', '/file-handler.php'), {
+            method: 'POST',
+            body: formData
+        }).then(function (response) {
+            return response.json();
+        }).then(function (data) {
+            removeTyping(typingId);
+            isLoading = false;
+            sendBtn.disabled = false;
+            filePreview.style.display = 'none';
+            inputEl.value = '';
+            inputEl.style.height = 'auto';
+
+            if (data.success) {
+                // Show file info as user message
+                var fileMsg = '📎 Fichier: **' + data.file_name + '** (Type détecté: ' + data.document_type + ')';
+                appendMsg('user', fileMsg, conv);
+                conv.history.push({ role: 'user', content: fileMsg });
+
+                // Build detailed analysis context for Claude
+                var analysisText = 'Document analysé:\n' +
+                                 '- Type: ' + data.document_type + '\n' +
+                                 '- Description: ' + (data.analysis.description || 'N/A') + '\n' +
+                                 '- Données extraites: ' + JSON.stringify(data.analysis.extracted_data || data.analysis);
+
+                // Create message with analysis context
+                var contextMsg = analysisText + (message ? '\n\nQuestion de l\'utilisateur: ' + message : '');
+
+                appendMsg('user', 'Analyse en cours...', conv);
+                conv.history.push({ role: 'user', content: contextMsg });
+                saveStore();
+
+                // Send to Claude with file context
+                isLoading = true;
+                sendBtn.disabled = true;
+                var typingId2 = addTyping();
+
+                var historyToSend = conv.history.slice(0, -1);
+                if (historyToSend.length > 16) historyToSend = historyToSend.slice(-16);
+
+                fetch(CHATBOT_AJAX_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: contextMsg,
+                        history: historyToSend,
+                        file_context: analysisText,
+                        token: (typeof CHATBOT_TOKEN !== 'undefined') ? CHATBOT_TOKEN : ''
+                    })
+                }).then(function (response) {
+                    var ct = response.headers.get('Content-Type') || '';
+                    if (ct.indexOf('text/event-stream') !== -1) {
+                        // Streaming response
+                        var reader = response.body.getReader();
+                        var decoder = new TextDecoder();
+                        var sseBuf = '';
+                        var fullText = '';
+                        var botDiv = null, contentDiv = null, timeDiv = null;
+                        var done = false;
+
+                        function finish() {
+                            if (done) return;
+                            done = true;
+                            removeTyping(typingId2);
+                            isLoading = false;
+                            sendBtn.disabled = false;
+                            if (fullText && botDiv) {
+                                conv.messages.push({ cls: botDiv.className, html: contentDiv.outerHTML + timeDiv.outerHTML });
+                                conv.history.push({ role: 'assistant', content: fullText });
+                                if (conv.history.length > 20) conv.history = conv.history.slice(-20);
+                                saveStore();
+                            }
+                        }
+
+                        function pump() {
+                            return reader.read().then(function (result) {
+                                if (result.done) { finish(); return; }
+                                sseBuf += decoder.decode(result.value, { stream: true });
+                                var lines = sseBuf.split('\n');
+                                sseBuf = lines.pop();
+                                for (var i = 0; i < lines.length; i++) {
+                                    var line = lines[i].trim();
+                                    if (line.indexOf('data: ') !== 0) continue;
+                                    var data = line.slice(6);
+                                    if (data === '[DONE]') { finish(); return; }
+                                    try {
+                                        var json = JSON.parse(data);
+                                        if (json.token) {
+                                            if (!botDiv) {
+                                                removeTyping(typingId2);
+                                                botDiv = document.createElement('div');
+                                                botDiv.className = 'chat-message bot-message';
+                                                contentDiv = document.createElement('div');
+                                                contentDiv.className = 'message-content';
+                                                timeDiv = document.createElement('div');
+                                                timeDiv.className = 'message-time';
+                                                timeDiv.textContent = getTime();
+                                                botDiv.appendChild(contentDiv);
+                                                botDiv.appendChild(timeDiv);
+                                                msgArea.appendChild(botDiv);
+                                            }
+                                            fullText += json.token;
+                                            contentDiv.innerHTML = renderMarkdown(fullText);
+                                            scrollToBottom();
+                                        }
+                                    } catch (e) {}
+                                }
+                                return pump();
+                            });
+                        }
+                        pump();
+                    } else {
+                        return response.json().then(function (data) {
+                            removeTyping(typingId2);
+                            isLoading = false;
+                            sendBtn.disabled = false;
+                            if (data.success) {
+                                appendMsg('bot', data.message, conv);
+                                conv.history.push({ role: 'assistant', content: data.message });
+                                if (conv.history.length > 20) conv.history = conv.history.slice(-20);
+                                saveStore();
+                            } else {
+                                appendMsg('error', '❌ Erreur: ' + (data.error || 'Inconnue'), conv);
+                            }
+                        });
+                    }
+                }).catch(function (err) {
+                    removeTyping(typingId2);
+                    isLoading = false;
+                    sendBtn.disabled = false;
+                    appendMsg('error', '❌ Erreur réseau: ' + err.message, conv);
+                });
+            } else {
+                appendMsg('error', '❌ Erreur: ' + (data.error || 'Upload échoué'), conv);
+            }
+        }).catch(function (err) {
+            removeTyping(typingId);
+            isLoading = false;
+            sendBtn.disabled = false;
+            appendMsg('error', '❌ Erreur réseau: ' + err.message, conv);
+        });
+    }
+
+    // ── Audio Recording Handler ──────────────────────────────
+    function toggleAudioRecording() {
+        if (isRecording) {
+            stopAudioRecording();
+        } else {
+            startAudioRecording();
+        }
+    }
+
+    function startAudioRecording() {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+            isRecording = true;
+            audioChunks = [];
+            recordingStartTime = Date.now();
+
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+            mediaRecorder.ondataavailable = function (event) {
+                audioChunks.push(event.data);
+            };
+            mediaRecorder.onstop = function () {
+                var audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                sendAudio(audioBlob);
+                stream.getTracks().forEach(function (track) { track.stop(); });
+            };
+
+            mediaRecorder.start();
+            recordingInd.style.display = 'flex';
+            micBtn.classList.add('recording');
+
+            // Update recording time
+            var recordingInterval = setInterval(function () {
+                if (!isRecording) { clearInterval(recordingInterval); return; }
+                var elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                recordingTime.textContent = Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0');
+                if (elapsed > 120) stopAudioRecording();
+            }, 100);
+        }).catch(function (err) {
+            appendMsg('error', '❌ Erreur microphone: ' + err.message, getActive());
+        });
+    }
+
+    function stopAudioRecording() {
+        if (!isRecording || !mediaRecorder) return;
+        isRecording = false;
+        mediaRecorder.stop();
+        recordingInd.style.display = 'none';
+        micBtn.classList.remove('recording');
+    }
+
+    function sendAudio(audioBlob) {
+        var conv = getActive();
+        if (!conv) return;
+
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var audioBase64 = e.target.result.split(',')[1];
+            var duration = (Date.now() - recordingStartTime) / 1000;
+
+            isLoading = true;
+            sendBtn.disabled = true;
+            var typingId = addTyping();
+
+            fetch(CHATBOT_AJAX_URL.replace('/chat.php', '/audio-handler.php'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    audio_base64: audioBase64,
+                    audio_duration: duration
+                })
+            }).then(function (response) {
+                return response.json();
+            }).then(function (data) {
+                removeTyping(typingId);
+                isLoading = false;
+                sendBtn.disabled = false;
+
+                if (data.success && data.transcribed_text) {
+                    inputEl.value = data.transcribed_text;
+                    inputEl.focus();
+                    // Auto-send the transcribed message
+                    setTimeout(doSend, 200);
+                } else {
+                    appendMsg('error', '❌ Erreur transcription: ' + (data.error || 'Inconnue'), conv);
+                }
+            }).catch(function (err) {
+                removeTyping(typingId);
+                isLoading = false;
+                sendBtn.disabled = false;
+                appendMsg('error', '❌ Erreur réseau audio: ' + err.message, conv);
+            });
+        };
+        reader.readAsDataURL(audioBlob);
+    }
+
     // ── Utils ─────────────────────────────────────────────────
     function scrollToBottom() {
         setTimeout(function () { msgArea.scrollTop = msgArea.scrollHeight; }, 60);
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        var k = 1024;
+        var sizes = ['Bytes', 'KB', 'MB'];
+        var i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
     function getTime() {
         var d = new Date();

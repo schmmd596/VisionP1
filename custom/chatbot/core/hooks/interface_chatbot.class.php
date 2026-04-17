@@ -90,13 +90,38 @@ class interface_chatbot
             </div>
 
             <div id="chatbot-input-area">
+                <button id="chatbot-upload-btn" class="chatbot-action-btn" title="Joindre un fichier (PNG, JPG, PDF)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14"></path>
+                    </svg>
+                </button>
+                <input type="file" id="chatbot-file-input" accept=".png,.jpg,.jpeg,.pdf" style="display:none;">
                 <textarea id="chatbot-input" placeholder="Écrivez votre message..." rows="1"></textarea>
+                <button id="chatbot-mic-btn" class="chatbot-action-btn" title="Parler (cliquez pour enregistrer)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v12a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                </button>
                 <button id="chatbot-send" title="Envoyer">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="22" y1="2" x2="11" y2="13"></line>
                         <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                     </svg>
                 </button>
+            </div>
+
+            <!-- Hidden recording indicator -->
+            <div id="chatbot-recording-indicator" style="display:none;">
+                <span class="recording-dot"></span>
+                <span id="chatbot-recording-time">0:00</span>
+            </div>
+
+            <!-- File preview area -->
+            <div id="chatbot-file-preview" style="display:none;">
+                <div id="chatbot-preview-content"></div>
             </div>
         </div>
 

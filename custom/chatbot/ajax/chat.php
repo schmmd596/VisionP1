@@ -36,6 +36,7 @@ $input       = json_decode(file_get_contents('php://input'), true) ?: $_POST;
 $user_message = trim($input['message'] ?? '');
 $history      = $input['history'] ?? [];
 $max_tokens   = (int)($conf->global->CHATBOT_MAX_TOKENS ?? 2048);
+$file_context = $input['file_context'] ?? '';  // For file analysis context
 
 // Detect API provider from key prefix
 if (strpos($api_key, 'sk-or-') === 0) {
@@ -355,6 +356,37 @@ $tools = [
             'emetteur'    => ['type' => 'string', 'description' => 'Émetteur ou bénéficiaire'],
         ], 'required' => ['account_id', 'amount', 'label']],
     ]],
+    ['type' => 'function', 'function' => [
+        'name' => 'create_bank_account',
+        'description' => 'Crée un nouveau compte bancaire ou caisse dans le système.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'ref'         => ['type' => 'string', 'description' => 'Référence courte du compte (ex: SD12)'],
+            'label'       => ['type' => 'string', 'description' => 'Nom de la banque ou libellé (ex: Sedad)'],
+            'type'        => ['type' => 'integer', 'description' => 'Type de compte: 0=Courant, 1=Livret, 2=Caisse', 'default' => 0],
+            'currency'    => ['type' => 'string', 'description' => 'Devise (ex: MRU)', 'default' => 'MRU'],
+            'country'     => ['type' => 'string', 'description' => 'Pays (ex: Mauritanie)', 'default' => 'MR'],
+            'initial_balance' => ['type' => 'number', 'description' => 'Solde initial (ex: 125000)', 'default' => 0],
+            'code_compta' => ['type' => 'string', 'description' => 'Code comptable (ex: 5121)'],
+        ], 'required' => ['ref', 'label']],
+    ]],
+    ['type' => 'function', 'function' => [
+        'name' => 'create_stock_movement',
+        'description' => 'Ajoute ou retire du stock pour un produit (mouvement de stock).',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'product_id'  => ['type' => 'integer', 'description' => 'ID du produit (utiliser search_products pour le trouver)'],
+            'warehouse_id'=> ['type' => 'integer', 'description' => 'ID de l\'entrepôt', 'default' => 1],
+            'qty'         => ['type' => 'number', 'description' => 'Quantité à ajouter (positif) ou retirer (négatif)'],
+            'label'       => ['type' => 'string', 'description' => 'Libellé du mouvement (ex: Correction, Inventaire)'],
+        ], 'required' => ['product_id', 'qty', 'label']],
+    ]],
+    ['type' => 'function', 'function' => [
+        'name' => 'delete_element',
+        'description' => 'Supprime un élément (produit, client, facture, commande, compte bancaire) du système.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'type' => ['type' => 'string', 'enum' => ['product', 'client', 'facture', 'commande', 'bank_account'], 'description' => 'Type de l\'élément à supprimer'],
+            'id'   => ['type' => 'integer', 'description' => 'ID de l\'élément à supprimer'],
+        ], 'required' => ['type', 'id']],
+    ]],
 
     // ── CONSEIL COMPTABLE ───────────────────────────────────
     ['type' => 'function', 'function' => [
@@ -371,10 +403,19 @@ $tools = [
 // ============================================================
 // SYSTEM PROMPT
 // ============================================================
+$active_modules_list = [];
+foreach ($conf->global as $k => $v) {
+    if (strpos($k, 'MAIN_MODULE_') === 0 && $v == 1) {
+        $active_modules_list[] = str_replace('MAIN_MODULE_', '', $k);
+    }
+}
+$modules_str = implode(', ', $active_modules_list);
+
 $system_prompt = "Tu es Tafkir IA, un assistant expert en gestion d'entreprise, comptabilité et fiscalité mauritanienne.
 
 Utilisateur connecté : ".$user->firstname." ".$user->lastname." (login : ".$user->login.")
 Date/Heure : ".dol_print_date(dol_now(), 'dayhour')."
+Modules actifs : ".$modules_str."
 
 === CAPACITÉS COMPLÈTES ===
 Tu gères TOUTES les fonctionnalités du système ERP, incluant tous les modules standards et les modules customisés qui ont été créés :
@@ -1192,6 +1233,9 @@ function execute_tool($name, $input, $db, $user) {
         case 'create_order':               return tool_create_order($db, $input, $user);
         case 'create_supplier_order':      return tool_create_supplier_order($db, $input, $user);
         case 'create_bank_transaction':    return tool_create_bank_transaction($db, $input, $user);
+        case 'create_bank_account':        return tool_create_bank_account($db, $input, $user);
+        case 'create_stock_movement':      return tool_create_stock_movement($db, $input, $user);
+        case 'delete_element':             return tool_delete_element($db, $input, $user);
         case 'accounting_advice':          return tool_accounting_advice($db, $input);
         default:                           return ['error' => 'Outil inconnu: '.$name];
     }
@@ -1246,7 +1290,14 @@ foreach ($history as $h) {
     if (!empty($h['role']) && !empty($h['content'])) $messages[] = ['role'=>$h['role'],'content'=>$h['content']];
 }
 if (count($messages) > 16) $messages = array_slice($messages, -16);
-$messages[] = ['role' => 'user', 'content' => $user_message];
+
+// Add file context if provided (from file-handler.php analysis)
+$final_message = $user_message;
+if (!empty($file_context)) {
+    $final_message = "📎 CONTEXTE FICHIER:\n" . $file_context . "\n\n" . $user_message;
+}
+
+$messages[] = ['role' => 'user', 'content' => $final_message];
 
 $max_iter = 10;
 
@@ -1376,4 +1427,85 @@ if ($provider === 'anthropic') {
 
     echo "data: ".json_encode(['error'=>'Trop d\'itérations. Réessayez avec une question plus simple.'],JSON_UNESCAPED_UNICODE)."\n\n";
     echo "data: [DONE]\n\n"; flush();
+}
+// ============================================================
+// NEW TOOLS IMPLEMENTATIONS
+// ============================================================
+
+function tool_create_bank_account($db, $args, $user) {
+    require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+    $account = new Account($db);
+    $account->ref = $args['ref'];
+    $account->label = $args['label'];
+    $account->courant = isset($args['type']) ? $args['type'] : 0;
+    $account->currency_code = $args['currency'] ?? 'MRU';
+    $account->country_code = $args['country'] ?? 'MR';
+    $account->account_number = $args['ref'];
+    $account->account_code = $args['code_compta'] ?? '';
+    
+    $res = $account->create($user);
+    if ($res > 0) {
+        if (!empty($args['initial_balance']) && floatval($args['initial_balance']) != 0) {
+            $amount = floatval($args['initial_balance']);
+            $account->addline(dol_now(), 'VIR', 'Solde initial', $amount, 0, '', $user);
+        }
+        return ['success' => true, 'id' => $res, 'ref' => $account->ref, 'message' => "Compte bancaire créé avec succès."];
+    } else {
+        return ['error' => 'Erreur création banque: ' . $account->error];
+    }
+}
+
+function tool_create_stock_movement($db, $args, $user) {
+    require_once DOL_DOCUMENT_ROOT.'/product/stock/class/mouvementstock.class.php';
+    require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
+    $mov = new MouvementStock($db);
+    $mov->product_id = (int)$args['product_id'];
+    $mov->entrep_id = (int)($args['warehouse_id'] ?? 1);
+    $mov->qty = floatval($args['qty']);
+    $mov->label = $args['label'];
+    $mov->datem = dol_now();
+    
+    $res = $mov->_create($user);
+    if ($res > 0) {
+        return ['success' => true, 'id' => $res, 'message' => "Mouvement de stock enregistré avec succès."];
+    } else {
+        return ['error' => 'Erreur enregistrement stock: ' . $mov->error];
+    }
+}
+
+function tool_delete_element($db, $args, $user) {
+    $id = (int)$args['id'];
+    $type = $args['type'];
+    $obj = null;
+    
+    if ($type === 'product') {
+        require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
+        $obj = new Product($db);
+    } elseif ($type === 'client') {
+        require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
+        $obj = new Societe($db);
+    } elseif ($type === 'facture') {
+        require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+        $obj = new Facture($db);
+    } elseif ($type === 'commande') {
+        require_once DOL_DOCUMENT_ROOT.'/commande/class/commande.class.php';
+        $obj = new Commande($db);
+    } elseif ($type === 'bank_account') {
+        require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+        $obj = new Account($db);
+    } else {
+        return ['error' => "Type non supporté."];
+    }
+    
+    $res = $obj->fetch($id);
+    if ($res > 0) {
+        $del = $obj->delete($user);
+        if ($del > 0) {
+            return ['success' => true, 'message' => "Élément supprimé avec succès."];
+        } else {
+            return ['error' => "Erreur lors de la suppression: " . $obj->error];
+        }
+    } else {
+        return ['error' => "Élément introuvable avec l'ID $id."];
+    }
 }
