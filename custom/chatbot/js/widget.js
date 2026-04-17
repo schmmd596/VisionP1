@@ -37,6 +37,68 @@
     var audioChunks = [];
     var recordingStartTime = 0;
 
+    // ── Create upload/audio buttons dynamically ───────────────
+    function initUploadAudioButtons() {
+        var inputArea = document.getElementById('chatbot-input-area');
+        if (!inputArea) return;  // Exit if no input area
+
+        // Create upload button
+        if (!document.getElementById('chatbot-upload-btn')) {
+            var uploadBtn = document.createElement('button');
+            uploadBtn.id = 'chatbot-upload-btn';
+            uploadBtn.className = 'chatbot-action-btn';
+            uploadBtn.type = 'button';
+            uploadBtn.title = 'Joindre un fichier (PNG, JPG, PDF)';
+            uploadBtn.textContent = '📎';
+            inputArea.insertBefore(uploadBtn, inputArea.firstChild);
+
+            var fileInput = document.createElement('input');
+            fileInput.id = 'chatbot-file-input';
+            fileInput.type = 'file';
+            fileInput.accept = '.png,.jpg,.jpeg,.pdf';
+            fileInput.style.display = 'none';
+            inputArea.appendChild(fileInput);
+
+            uploadBtn.addEventListener('click', function() { fileInput.click(); });
+            fileInput.addEventListener('change', function() {
+                if (this.files && this.files[0]) handleFileSelect(this.files[0]);
+            });
+        }
+
+        // Create mic button
+        if (!document.getElementById('chatbot-mic-btn')) {
+            var micBtn = document.createElement('button');
+            micBtn.id = 'chatbot-mic-btn';
+            micBtn.className = 'chatbot-action-btn';
+            micBtn.type = 'button';
+            micBtn.title = 'Enregistrer audio (cliquez pour parler)';
+            micBtn.textContent = '🎤';
+
+            var sendBtn = document.getElementById('chatbot-send');
+            if (sendBtn) {
+                inputArea.insertBefore(micBtn, sendBtn);
+            } else {
+                inputArea.appendChild(micBtn);
+            }
+
+            micBtn.addEventListener('click', toggleAudioRecording);
+        }
+
+        // Create recording indicator
+        if (!document.getElementById('chatbot-recording-indicator')) {
+            var recInd = document.createElement('div');
+            recInd.id = 'chatbot-recording-indicator';
+            recInd.style.display = 'none';
+            recInd.style.padding = '8px';
+            recInd.style.textAlign = 'center';
+            recInd.style.background = '#fecaca';
+            recInd.style.color = '#dc2626';
+            recInd.style.fontSize = '12px';
+            recInd.innerHTML = '🔴 Enregistrement... <span id="chatbot-recording-time">0:00</span>';
+            inputArea.parentNode.insertBefore(recInd, inputArea);
+        }
+    }
+
     // ── Init ────────────────────────────────────────────────
     if (!store.activeId || !getConv(store.activeId)) {
         var first = store.conversations[0];
@@ -48,6 +110,17 @@
     }
     renderConvList();
     renderMessages();
+
+    // Initialize upload/audio buttons after DOM is ready
+    setTimeout(function() {
+        initUploadAudioButtons();
+        // Re-assign refs after creating buttons
+        uploadBtn = document.getElementById('chatbot-upload-btn');
+        fileInput = document.getElementById('chatbot-file-input');
+        micBtn = document.getElementById('chatbot-mic-btn');
+        recordingInd = document.getElementById('chatbot-recording-indicator');
+        recordingTime = document.getElementById('chatbot-recording-time');
+    }, 100);
 
     // ── Toggle window ────────────────────────────────────────
     toggle.addEventListener('click', function () {
@@ -94,22 +167,7 @@
         this.style.height = Math.min(this.scrollHeight, 120) + 'px';
     });
 
-    // ── Upload ────────────────────────────────────────────────
-    if (uploadBtn && fileInput) {
-        uploadBtn.addEventListener('click', function () { fileInput.click(); });
-        fileInput.addEventListener('change', function () {
-            if (this.files && this.files[0]) {
-                handleFileSelect(this.files[0]);
-            }
-        });
-    }
-
-    // ── Audio Recording ───────────────────────────────────────
-    if (micBtn) {
-        micBtn.addEventListener('click', toggleAudioRecording);
-    }
-
-    // Drag & Drop for messages area
+    // ── Drag & Drop for messages area ─────────────────────────
     if (msgArea) {
         msgArea.addEventListener('dragover', function (e) { e.preventDefault(); this.style.backgroundColor = 'rgba(79,70,229,.05)'; });
         msgArea.addEventListener('dragleave', function () { this.style.backgroundColor = ''; });
