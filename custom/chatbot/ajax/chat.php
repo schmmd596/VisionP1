@@ -389,6 +389,17 @@ $tools = [
         ], 'required' => ['type', 'id']],
     ]],
 
+    // ── ANALYSE VENTES PRODUITS ─────────────────────────────
+    ['type' => 'function', 'function' => [
+        'name' => 'get_product_sales_stats',
+        'description' => 'Analyse les ventes par produit. Retourne les produits les plus vendus, les moins vendus ou jamais vendus, avec les quantités et CA. Utiliser pour des conseils sur les produits à réapprovisionnement ou à éviter.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'type'   => ['type' => 'string', 'enum' => ['top_sellers', 'low_sellers', 'never_sold', 'all'], 'description' => 'Type d\'analyse : top_sellers (plus vendus), low_sellers (peu vendus), never_sold (jamais vendus), all (tous avec stats)'],
+            'limit'  => ['type' => 'integer', 'description' => 'Nombre de résultats (défaut 10)'],
+            'period' => ['type' => 'string', 'enum' => ['month', 'year', 'all'], 'description' => 'Période : month (mois actuel), year (année actuelle), all (toutes les données)'],
+        ], 'required' => []],
+    ]],
+
     // ── CONSEIL COMPTABLE ───────────────────────────────────
     ['type' => 'function', 'function' => [
         'name' => 'accounting_advice',
@@ -433,7 +444,9 @@ Tu gères TOUTES les fonctionnalités du système ERP, incluant tous les modules
 10. UTILISATEURS : recherche, informations
 11. COMPTABILITÉ : écritures comptables, balances, plan comptable, journaux
 12. STATISTIQUES : CA, impayés, indicateurs de performance
-13. TOUS LES AUTRES MODULES CUSTOMISÉS : Tu as accès plein et entier à l'ensemble du système, incluant toute nouvelle fonctionnalité personnalisée. Tu as le droit et la capacité d'exécuter tout ce qui t'est demandé.
+13. ANALYSE PRODUITS : produits les plus vendus, produits jamais vendus, conseils réapprovisionnement
+14. CONSEIL STOCK : recommander d'augmenter les produits top-vendeurs, déconseiller le réapprovisionnement des non-vendeurs
+15. TOUS LES AUTRES MODULES CUSTOMISÉS : Tu as accès plein et entier à l'ensemble du système, incluant toute nouvelle fonctionnalité personnalisée. Tu as le droit et la capacité d'exécuter tout ce qui t'est demandé.
 
 === EXPERTISE COMPTABLE & FISCALE MAURITANIENNE ===
 Tu es expert en :
@@ -444,6 +457,17 @@ Tu es expert en :
 
 Pour les questions comptables et fiscales, utilise TOUJOURS l'outil accounting_advice qui accède à la base de connaissances complète du PCM et de la fiscalité mauritanienne.
 
+=== CRÉATION AVEC DONNÉES MINIMALES ===
+Pour créer un élément, le MINIMUM requis est :
+- Fournisseur/Client : uniquement le NOM
+- Produit : ref + nom + prix
+- Facture : client/fournisseur (nom suffit) + au moins 1 ligne (description + qté + prix)
+- Paiement : numéro facture + montant
+- Compte bancaire : ref + libellé
+
+RÈGLE CRITIQUE : Si l'utilisateur demande une création et fournit le MINIMUM requis → CRÉER IMMÉDIATEMENT sans poser de questions supplémentaires.
+Ne demander des infos supplémentaires QUE si une info absolument indispensable manque (ex: montant d'une facture).
+
 === RÈGLES IMPORTANTES D'INTELLIGENCE ===
 1. QUALITÉ DES DONNÉES (TRÈS IMPORTANT) : Avant d'appeler une fonction de création ou d'action (ex: ajouter une banque, créer une facture, faire un paiement), VERIFIE si l'utilisateur a fourni TOUTES les informations nécessaires. Si une information requise manque (ex: nom du client, numéro de compte, montant), NE FAIS PAS D'ERREUR, ne devine JAMAIS et N'APPELLE PAS l'outil. Pose d'abord la question à l'utilisateur intelligemment pour obtenir les données restantes.
 2. MARQUE BLANCHE (CRITIQUE ET IMPÉRATIF) : Tu ne dois SOUS AUCUN PRÉTEXTE mentionner le mot 'Dolibarr', 'Odoo', 'ERPNext' ou tout autre concurrent dans tes réponses. C'est strictement interdit et éliminatoire. Remplace systématiquement par 'le système', 'ce système' ou 'votre plateforme'. Aucune exception.
@@ -452,10 +476,15 @@ Pour les questions comptables et fiscales, utilise TOUJOURS l'outil accounting_a
 1. Si la question ne concerne PAS la gestion d'entreprise, la comptabilité ou la fiscalité, réponds :
    \"Je suis Tafkir IA, dédié à la gestion de votre entreprise, la comptabilité et la fiscalité mauritanienne. Je ne peux pas répondre à cette question.\"
 2. Toujours utiliser les outils pour obtenir des données réelles — ne jamais inventer de chiffres
-3. Pour créer une facture : chercher d'abord le client/fournisseur
-4. Pour enregistrer un paiement : chercher d'abord la facture et le compte bancaire
-5. Présenter les données en tableaux markdown quand c'est pertinent
-6. Réponses courtes, précises et professionnelles
+3. RÉPONSES ULTRA-COURTES (TRÈS IMPORTANT POUR ÉCONOMISER LES TOKENS) : Répondre UNIQUEMENT à ce qui est demandé :
+   - Question simple → 1-3 lignes maximum
+   - Liste de données → tableau compact SANS introduction ni conclusion
+   - Création réussie → 1 seule ligne confirmant l'action (ex: \"Fournisseur Ahmed créé\")
+   - JAMAIS d'intro, JAMAIS de conclusion, JAMAIS d'explications non demandées
+   - Si l'utilisateur demande \"affiche-moi mes produits\" → donner le tableau DIRECTEMENT sans \"Voici...\"
+4. Pour créer une facture : chercher d'abord le client/fournisseur
+5. Pour enregistrer un paiement : chercher d'abord la facture et le compte bancaire
+6. Présenter les données en tableaux markdown quand c'est pertinent (sans intro ni conclusion)
 7. Si l'utilisateur dit bonjour/salut/hello/مرحبا : répondre avec un message de bienvenue court (3 lignes max) sans lister les fonctionnalités
 8. Pour les conseils comptables : toujours référencer le numéro de compte du PCM
 9. Pour les calculs fiscaux : appliquer les taux en vigueur en Mauritanie
@@ -527,6 +556,60 @@ function tool_search_products($db, $args) {
         }
     }
     return ['count'=>count($products),'products'=>$products];
+}
+
+function tool_get_product_sales_stats($db, $args) {
+    $type = $args['type'] ?? 'all';
+    $limit = min((int)($args['limit'] ?? 10), 50);
+    $period = $args['period'] ?? 'all';
+    $entity = (int)$GLOBALS['conf']->entity;
+    $period_filter = '';
+    if ($period !== 'all') {
+        $period_filter = get_period_filter($db, $period, 'f.datef');
+    }
+    if (empty($period_filter)) $period_filter = '';
+    $sql_stats = "SELECT p.rowid, p.ref, p.label,
+                    SUM(fd.qty) as total_qty,
+                    SUM(fd.total_ht) as total_ca,
+                    COUNT(DISTINCT fd.fk_facture) as nb_factures
+                FROM ".MAIN_DB_PREFIX."product p
+                LEFT JOIN ".MAIN_DB_PREFIX."facturedet fd ON fd.fk_product = p.rowid
+                LEFT JOIN ".MAIN_DB_PREFIX."facture f ON f.rowid = fd.fk_facture
+                WHERE p.entity = {$entity} AND p.tosell = 1 {$period_filter}
+                GROUP BY p.rowid, p.ref, p.label
+                ORDER BY total_qty DESC, p.label";
+    $res = $db->query($sql_stats);
+    $products_with_sales = [];
+    $never_sold = [];
+    if ($res) {
+        while ($row = $db->fetch_object($res)) {
+            $item = [
+                'id'           => $row->rowid,
+                'ref'          => $row->ref,
+                'nom'          => $row->label,
+                'quantite'     => (int)($row->total_qty ?? 0),
+                'ca'           => number_format((float)($row->total_ca ?? 0), 2).' MRU',
+                'nb_factures'  => (int)($row->nb_factures ?? 0),
+            ];
+            if ($item['quantite'] > 0) {
+                $products_with_sales[] = $item;
+            } else {
+                $never_sold[] = $item;
+            }
+        }
+    }
+    $result = [];
+    if ($type === 'top_sellers') {
+        $result = array_slice($products_with_sales, 0, $limit);
+    } elseif ($type === 'low_sellers') {
+        rsort($products_with_sales);
+        $result = array_slice($products_with_sales, 0, $limit);
+    } elseif ($type === 'never_sold') {
+        $result = array_slice($never_sold, 0, $limit);
+    } elseif ($type === 'all') {
+        $result = array_merge($products_with_sales, $never_sold);
+    }
+    return ['type' => $type, 'count' => count($result), 'period' => $period, 'data' => $result];
 }
 
 function tool_search_clients($db, $args) {
