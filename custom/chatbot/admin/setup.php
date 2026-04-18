@@ -164,16 +164,16 @@ print load_fiche_titre('Configuration du Tafkir AI', '', 'fa-robot');
 <br>
 <table class="noborder centpercent">
 <thead>
-<!-- <tr class="liste_titre">
+<tr class="liste_titre">
     <th>Test de connexion à l'API</th>
-</tr> -->
+</tr>
 </thead>
 <tbody>
 <tr class="oddeven">
-<!-- <td>
+<td>
     <button type="button" class="button" onclick="testApi()">🔌 Tester la connexion API</button>
     <span id="test-result" style="margin-left:15px;font-weight:600"></span>
-</td> -->
+</td>
 </tr>
 </tbody>
 </table>
