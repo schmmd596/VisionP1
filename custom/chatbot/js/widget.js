@@ -42,6 +42,26 @@
         var inputArea = document.getElementById('chatbot-input-area');
         if (!inputArea) return;  // Exit if no input area
 
+        // Create language selector
+        if (!document.getElementById('chatbot-lang-selector')) {
+            var langBtn = document.createElement('button');
+            langBtn.id = 'chatbot-lang-selector';
+            langBtn.className = 'chatbot-action-btn';
+            langBtn.type = 'button';
+            langBtn.title = 'Changer la langue (Français/العربية)';
+            langBtn.textContent = '🌐';
+            inputArea.insertBefore(langBtn, inputArea.firstChild);
+
+            langBtn.addEventListener('click', function() {
+                // Toggle between French and Arabic
+                currentLanguage = currentLanguage === 'ar-SA' ? 'fr-FR' : 'ar-SA';
+                var conv = getActive();
+                if (conv) conv.language = currentLanguage;
+                saveStore();
+                langBtn.title = currentLanguage === 'ar-SA' ? 'Langue: العربية (Arabe) - Cliquez pour Français' : 'Langue: Français - Cliquez pour العربية';
+            });
+        }
+
         // Create upload button
         if (!document.getElementById('chatbot-upload-btn')) {
             var uploadBtn = document.createElement('button');
@@ -50,7 +70,7 @@
             uploadBtn.type = 'button';
             uploadBtn.title = 'Joindre un fichier (PNG, JPG, PDF)';
             uploadBtn.textContent = '📎';
-            inputArea.insertBefore(uploadBtn, inputArea.firstChild);
+            inputArea.insertBefore(uploadBtn, document.getElementById('chatbot-mic-btn') || inputArea.lastChild);
 
             var fileInput = document.createElement('input');
             fileInput.id = 'chatbot-file-input';
@@ -107,6 +127,11 @@
         } else {
             createNewConversation();
         }
+    }
+    // Restore language preference from active conversation
+    var activeConv = getConv(store.activeId);
+    if (activeConv && activeConv.language) {
+        currentLanguage = activeConv.language;
     }
     renderConvList();
     renderMessages();
@@ -215,6 +240,12 @@
 
         appendMsg('user', text, conv);
 
+        // Detect language from the current message
+        var detectedLang = detectLanguage(text);
+        currentLanguage = detectedLang;
+        // Persist language preference to conversation
+        if (conv && !conv.language) conv.language = detectedLang;
+
         // Si c'est un message vocal, ajouter une instruction de correction
         var messageToSend = text;
         if (isVoiceMessage) {
@@ -239,6 +270,7 @@
             body: JSON.stringify({
                 message: messageToSend,
                 history: historyToSend,
+                language: detectedLang,
                 token: (typeof CHATBOT_TOKEN !== 'undefined') ? CHATBOT_TOKEN : ''
             })
         }).then(function (response) {
@@ -347,7 +379,7 @@
     // ── Conversation helpers ───────────────────────────────────
     function createNewConversation() {
         var id = 'conv_' + Date.now();
-        var conv = { id: id, title: 'Nouvelle conversation', history: [], messages: [], createdAt: Date.now() };
+        var conv = { id: id, title: 'Nouvelle conversation', history: [], messages: [], createdAt: Date.now(), language: 'fr-FR' };
         store.conversations.unshift(conv);
         store.activeId = id;
         saveStore();
@@ -362,6 +394,10 @@
 
     function switchConv(id) {
         store.activeId = id;
+        var conv = getConv(id);
+        if (conv && conv.language) {
+            currentLanguage = conv.language;
+        }
         saveStore();
         renderConvList();
         renderMessages();
@@ -797,6 +833,10 @@
                 var historyToSend = conv.history.slice(0, -1);
                 if (historyToSend.length > 16) historyToSend = historyToSend.slice(-16);
 
+                // Detect language from message
+                var detectedLang = detectLanguage(message || '');
+                currentLanguage = detectedLang;
+
                 fetch(CHATBOT_AJAX_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -804,6 +844,7 @@
                         message: contextMsg,
                         history: historyToSend,
                         file_context: analysisText,
+                        language: detectedLang,
                         token: (typeof CHATBOT_TOKEN !== 'undefined') ? CHATBOT_TOKEN : ''
                     })
                 }).then(function (response) {
@@ -915,12 +956,16 @@
     var recognizerActive = false;
     var currentLanguage = 'fr-FR';  // Français par défaut
 
-    // Détecter la langue basée sur le texte existant dans la textarea
+    // Détecter la langue basée sur le texte
     function detectLanguage(text) {
-        if (!text || text.length === 0) return 'fr-FR';
+        // Si pas de texte, utiliser la langue actuelle ou défaut
+        if (!text || text.length === 0) {
+            return currentLanguage || 'fr-FR';
+        }
 
-        // Compter les caractères arabes
+        // Compter les caractères arabes et français/anglais
         var arabicCount = 0;
+        var latinCount = 0;
         var totalChars = 0;
 
         for (var i = 0; i < text.length; i++) {
@@ -928,17 +973,21 @@
             // Arabe: U+0600 à U+06FF
             if (code >= 0x0600 && code <= 0x06FF) {
                 arabicCount++;
+                totalChars++;
             }
-            // Compter seulement les caractères alphabétiques (pas espaces/ponctuation)
-            if ((code >= 0x0600 && code <= 0x06FF) || (code >= 65 && code <= 122)) {
+            // Latin: A-Z, a-z, accents français
+            else if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 192 || code === 224 || code === 200 || code === 232 || code === 201 || code === 233 || code === 204 || code === 236 || code === 212 || code === 244 || code === 217 || code === 249 || code === 220 || code === 252) {
+                latinCount++;
                 totalChars++;
             }
         }
 
-        // Si plus de 30% des caractères sont arabes → arabe
-        if (totalChars > 0 && (arabicCount / totalChars) > 0.3) {
+        // Si plus de 25% des caractères sont arabes → arabe
+        if (totalChars > 0 && arabicCount / totalChars > 0.25) {
             return 'ar-SA';
         }
+
+        // Sinon français par défaut
         return 'fr-FR';
     }
 

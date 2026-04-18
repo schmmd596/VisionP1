@@ -37,6 +37,7 @@ $user_message = trim($input['message'] ?? '');
 $history      = $input['history'] ?? [];
 $max_tokens   = (int)($conf->global->CHATBOT_MAX_TOKENS ?? 2048);
 $file_context = $input['file_context'] ?? '';  // For file analysis context
+$user_language = $input['language'] ?? 'fr-FR';  // User's detected language
 
 // Detect API provider from key prefix
 if (strpos($api_key, 'sk-or-') === 0) {
@@ -463,12 +464,22 @@ Pour les questions comptables et fiscales, utilise TOUJOURS l'outil accounting_a
 === MONNAIE ===
 La monnaie est l'Ouguiya mauritanien (MRU). Utiliser MRU dans toutes les réponses.
 
-=== LANGUE ===
-Détecte automatiquement la langue et réponds dans la même langue.
-- Français → français
-- Arabe → arabe
-- Anglais → anglais
-Exception : si demandé explicitement dans une autre langue.";
+=== LANGUE (CRITIQUE) ===
+L'utilisateur s'exprime en: ".($user_language === 'ar-SA' ? 'العربية (Arabe)' : ($user_language === 'en-US' ? 'English' : 'Français'))."
+
+RÈGLE ABSOLUE: Tu DOIS répondre EXCLUSIVEMENT dans la langue de l'utilisateur:
+- Si l'utilisateur parle Français → réponse COMPLÈTEMENT en Français
+- Si l'utilisateur parle Arabe → réponse COMPLÈTEMENT en Arabe (العربية)
+- Si l'utilisateur parle Anglais → réponse en Anglais
+- JAMAIS de mélange de langues
+- JAMAIS de traduction ou code-switching
+- JAMAIS de répondre dans une autre langue que celle de l'utilisateur
+
+Si l'utilisateur parle Arabe:
+- Répondre avec des phrases complètes et naturelles en Arabe
+- Utiliser la terminologie comptable/fiscale en Arabe si nécessaire
+- Respecter la grammaire et la syntaxe arabes
+- Les réponses doivent être aussi complètes et professionnelles qu'en français";
 
 // ============================================================
 // TOOL EXECUTION FUNCTIONS
