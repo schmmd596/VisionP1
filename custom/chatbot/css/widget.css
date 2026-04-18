@@ -327,6 +327,28 @@
 }
 .btn-remove:hover { background:#e0e7ff; color:var(--c-primary); }
 
+/* ── Chat File Card ────────────────────────────────────────── */
+.chat-file-card {
+  background:white; border:2px solid var(--c-primary-light);
+  border-radius:12px; overflow:hidden; max-width:280px;
+  margin:8px 0;
+}
+.file-card-header {
+  padding:8px 12px; background:var(--c-primary-light);
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:12px; font-weight:600; color:var(--c-primary);
+}
+.btn-close-file {
+  background:none; border:none; cursor:pointer;
+  font-size:16px; color:var(--c-primary); padding:0;
+  width:20px; height:20px; display:flex;
+  align-items:center; justify-content:center;
+}
+.btn-close-file:hover { color:#dc2626; }
+.chat-file-img {
+  width:100%; max-height:200px; object-fit:cover; display:block;
+}
+
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 600px) {
   #chatbot-window { right:8px; bottom:78px; width:calc(100vw - 16px); height:75vh; }
