@@ -477,16 +477,28 @@
         // Show file preview
         var reader = new FileReader();
         reader.onload = function (e) {
+            // Ensure filePreview exists
+            if (!filePreview) {
+                filePreview = document.getElementById('chatbot-file-preview');
+                if (!filePreview) {
+                    filePreview = document.createElement('div');
+                    filePreview.id = 'chatbot-file-preview';
+                    var inputArea = document.getElementById('chatbot-input-area');
+                    if (inputArea && inputArea.parentNode) {
+                        inputArea.parentNode.insertBefore(filePreview, inputArea);
+                    }
+                }
+            }
+
             var previewHtml = '';
             if (ext === 'pdf') {
-                previewHtml = '<div class="file-preview-item"><strong>📄 ' + file.name + '</strong> (' + formatFileSize(file.size) + ')</div>';
+                previewHtml = '<div class="file-preview-card"><div class="file-preview-header">📄 ' + file.name + ' (' + formatFileSize(file.size) + ')<button class="preview-remove" onclick="document.getElementById(\'chatbot-file-preview\').style.display=\'none\'">✕</button></div></div>';
             } else {
-                previewHtml = '<img src="' + e.target.result + '" class="file-preview-img" />';
+                previewHtml = '<div class="file-preview-card"><img src="' + e.target.result + '" class="file-preview-img" /><div class="preview-actions"><button class="btn-send" onclick="document.getElementById(\'chatbot-input-area\').dispatchEvent(new Event(\'file-upload-send\'))">📤 Envoyer</button><button class="btn-remove" onclick="document.getElementById(\'chatbot-file-preview\').style.display=\'none\'">🗑 Supprimer</button></div></div>';
             }
-            if (filePreview) {
-                filePreview.innerHTML = previewHtml;
-                filePreview.style.display = 'block';
-            }
+
+            filePreview.innerHTML = previewHtml;
+            filePreview.style.display = 'block';
 
             // Auto-send the file
             sendFile(file, inputEl.value.trim());
@@ -497,6 +509,9 @@
     function sendFile(file, message) {
         var conv = getActive();
         if (!conv) return;
+
+        // Cacher la prévisualisation
+        if (filePreview) filePreview.style.display = 'none';
 
         isLoading = true;
         sendBtn.disabled = true;
@@ -664,98 +679,81 @@
     // ── Web Speech API (Reconnaissance vocale native) ──────────
     var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     var recognizer = null;
+    var recognizerActive = false;
 
     function startAudioRecording() {
+        var conv = getActive();
+        if (!conv) return;
+
         if (!SpeechRecognition) {
-            appendMsg('error', '❌ Reconnaissance vocale non supportée par votre navigateur', getActive());
+            appendMsg('error', '❌ Votre navigateur ne supporte pas la reconnaissance vocale', conv);
             return;
         }
 
         try {
-            recognizer = new SpeechRecognition();
-            recognizer.language = 'fr-FR';
-            recognizer.continuous = false;
-            recognizer.interimResults = true;
-            recognizer.maxAlternatives = 1;
+            if (!recognizer) {
+                recognizer = new SpeechRecognition();
+                recognizer.language = 'fr-FR';
+                recognizer.continuous = false;
+                recognizer.interimResults = true;
+            }
 
-            var interimText = '';
+            var finalText = '';
+
             recognizer.onstart = function () {
+                recognizerActive = true;
                 isRecording = true;
                 if (recordingInd) recordingInd.style.display = 'block';
                 if (micBtn) micBtn.classList.add('recording');
                 recordingStartTime = Date.now();
-
-                // Update time
-                var timeInterval = setInterval(function () {
-                    if (!isRecording) { clearInterval(timeInterval); return; }
-                    var elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-                    if (recordingTime) recordingTime.textContent = Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0');
-                }, 100);
             };
 
             recognizer.onresult = function (event) {
-                interimText = '';
+                var interim = '';
                 for (var i = event.resultIndex; i < event.results.length; i++) {
                     var transcript = event.results[i][0].transcript;
                     if (event.results[i].isFinal) {
-                        interimText += transcript + ' ';
+                        finalText += transcript + ' ';
                     } else {
-                        interimText += transcript;
+                        interim = transcript;
                     }
                 }
-                if (recordingTime && interimText) {
-                    recordingTime.textContent = '📝 ' + interimText.substring(0, 30);
+                // Afficher la transcription en temps réel
+                if (recordingTime && (finalText || interim)) {
+                    recordingTime.textContent = (finalText + interim).substring(0, 40) + '...';
+                }
+            };
+
+            recognizer.onend = function () {
+                recognizerActive = false;
+                isRecording = false;
+                if (recordingInd) recordingInd.style.display = 'none';
+                if (micBtn) micBtn.classList.remove('recording');
+
+                // Auto-envoyer le texte transcrit
+                if (finalText && finalText.trim()) {
+                    inputEl.value = finalText.trim();
+                    setTimeout(doSend, 200);
                 }
             };
 
             recognizer.onerror = function (event) {
+                recognizerActive = false;
                 isRecording = false;
                 if (recordingInd) recordingInd.style.display = 'none';
                 if (micBtn) micBtn.classList.remove('recording');
-                appendMsg('error', '❌ Erreur: ' + event.error, getActive());
-            };
-
-            recognizer.onend = function () {
-                isRecording = false;
-                if (recordingInd) recordingInd.style.display = 'none';
-                if (micBtn) micBtn.classList.remove('recording');
+                appendMsg('error', '❌ Erreur mic: ' + event.error, conv);
             };
 
             recognizer.start();
         } catch (err) {
-            appendMsg('error', '❌ Erreur microphone: ' + err.message, getActive());
+            appendMsg('error', '❌ Erreur: ' + err.message, conv);
         }
     }
 
     function stopAudioRecording() {
-        if (!recognizer || !isRecording) return;
+        if (!recognizer || !recognizerActive) return;
         recognizer.stop();
-        // onend sera appelé automatiquement
-    }
-
-    // Override handleRecognitionResult
-    if (recognizer) {
-        recognizer.onend = function () {
-            isRecording = false;
-            if (recordingInd) recordingInd.style.display = 'none';
-            if (micBtn) micBtn.classList.remove('recording');
-        };
-
-        var originalOnResult = recognizer.onresult;
-        recognizer.onresult = function (event) {
-            originalOnResult.call(this, event);
-            // Auto-send si final
-            if (event.results[event.results.length - 1].isFinal) {
-                var finalText = '';
-                for (var i = event.resultIndex; i < event.results.length; i++) {
-                    finalText += event.results[i][0].transcript;
-                }
-                if (finalText) {
-                    inputEl.value = finalText;
-                    setTimeout(doSend, 300);
-                }
-            }
-        };
     }
 
     // ── Utils ─────────────────────────────────────────────────
