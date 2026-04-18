@@ -84,12 +84,13 @@ if ($file_content === false) {
 // Detect API provider
 if (strpos($api_key, 'sk-or-') === 0) {
     $provider = 'openrouter';
-    $api_url = 'https://openrouter.ai/api/v1/messages';
+    $api_url = 'https://openrouter.ai/api/v1/chat/completions';
     $model = $conf->global->CHATBOT_MODEL ?? 'anthropic/claude-sonnet-4-6';
     $api_headers = [
         'Authorization: Bearer ' . $api_key,
         'Content-Type: application/json',
-        'HTTP-Referer: ' . $_SERVER['HTTP_HOST'] ?? 'localhost'
+        'HTTP-Referer: ' . $_SERVER['HTTP_HOST'] ?? 'localhost',
+        'X-Title: Tafkir IA - File Analysis'
     ];
 } elseif (strpos($api_key, 'sk-ant-') === 0) {
     $provider = 'anthropic';
@@ -106,42 +107,69 @@ if (strpos($api_key, 'sk-or-') === 0) {
 }
 
 // ============================================================
-// PREPARE REQUEST BASED ON FILE TYPE
+// PREPARE REQUEST BASED ON FILE TYPE & PROVIDER
 // ============================================================
 
 if ($is_image) {
-    // ── IMAGE: Use Claude Vision ──────────────────────────
+    // ── IMAGE: Use Vision ──────────────────────────
     $base64_image = base64_encode($file_content);
     $image_media_type = $ext === 'png' ? 'image/png' : 'image/jpeg';
+    $analysis_prompt = 'Analyse cette image. Est-ce une facture, une liste de produits, ou un autre document ? ' .
+                      'Extrais les informations suivantes en format JSON: ' .
+                      '{"type": "facture_client|facture_fournisseur|liste_produits|autre", ' .
+                      '"description": "brève description", ' .
+                      '"extracted_data": "les données principales extraites"}. ' .
+                      'Réponds UNIQUEMENT en JSON valide.';
 
-    $claude_request = [
-        'model' => $model,
-        'max_tokens' => 1024,
-        'messages' => [
-            [
-                'role' => 'user',
-                'content' => [
-                    [
-                        'type' => 'image',
-                        'source' => [
-                            'type' => 'base64',
-                            'media_type' => $image_media_type,
-                            'data' => $base64_image
+    if ($provider === 'anthropic') {
+        // Anthropic format with /v1/messages
+        $claude_request = [
+            'model' => $model,
+            'max_tokens' => 1024,
+            'messages' => [
+                [
+                    'role' => 'user',
+                    'content' => [
+                        [
+                            'type' => 'image',
+                            'source' => [
+                                'type' => 'base64',
+                                'media_type' => $image_media_type,
+                                'data' => $base64_image
+                            ]
+                        ],
+                        [
+                            'type' => 'text',
+                            'text' => $analysis_prompt
                         ]
-                    ],
-                    [
-                        'type' => 'text',
-                        'text' => 'Analyse cette image. Est-ce une facture, une liste de produits, ou un autre document ? ' .
-                                 'Extrais les informations suivantes en format JSON: ' .
-                                 '{"type": "facture_client|facture_fournisseur|liste_produits|autre", ' .
-                                 '"description": "brève description", ' .
-                                 '"extracted_data": "les données principales extraites"}. ' .
-                                 'Réponds UNIQUEMENT en JSON valide.'
                     ]
                 ]
             ]
-        ]
-    ];
+        ];
+    } else {
+        // OpenRouter/OpenAI format with /v1/chat/completions
+        $claude_request = [
+            'model' => $model,
+            'max_tokens' => 1024,
+            'messages' => [
+                [
+                    'role' => 'user',
+                    'content' => [
+                        [
+                            'type' => 'image_url',
+                            'image_url' => [
+                                'url' => 'data:' . $image_media_type . ';base64,' . $base64_image
+                            ]
+                        ],
+                        [
+                            'type' => 'text',
+                            'text' => $analysis_prompt
+                        ]
+                    ]
+                ]
+            ]
+        ];
+    }
 } else {
     // ── PDF: Extract text, then analyze ──────────────────
     $pdf_text = extractTextFromPDF($file['tmp_name']);
@@ -156,19 +184,21 @@ if ($is_image) {
         $pdf_text = substr($pdf_text, 0, 4000) . '...';
     }
 
+    $analysis_prompt = 'Analyse ce document PDF:\n\n' . $pdf_text . '\n\n' .
+                      'Est-ce une facture, une liste de produits, ou un autre document ? ' .
+                      'Extrais les informations suivantes en format JSON: ' .
+                      '{"type": "facture_client|facture_fournisseur|liste_produits|autre", ' .
+                      '"description": "brève description", ' .
+                      '"extracted_data": "les données principales extraites"}. ' .
+                      'Réponds UNIQUEMENT en JSON valide.';
+
     $claude_request = [
         'model' => $model,
         'max_tokens' => 1024,
         'messages' => [
             [
                 'role' => 'user',
-                'content' => 'Analyse ce document PDF:\n\n' . $pdf_text . '\n\n' .
-                           'Est-ce une facture, une liste de produits, ou un autre document ? ' .
-                           'Extrais les informations suivantes en format JSON: ' .
-                           '{"type": "facture_client|facture_fournisseur|liste_produits|autre", ' .
-                           '"description": "brève description", ' .
-                           '"extracted_data": "les données principales extraites"}. ' .
-                           'Réponds UNIQUEMENT en JSON valide.'
+                'content' => $analysis_prompt
             ]
         ]
     ];
@@ -197,15 +227,24 @@ if ($http_code !== 200) {
 
 $response_data = json_decode($response, true);
 
-if (!$response_data || empty($response_data['content'])) {
+if (!$response_data) {
     http_response_code(500);
     die(json_encode(['error' => 'Réponse API invalide']));
 }
 
-// Extract text response
+// Extract text response based on provider format
 $analysis = '';
-if (isset($response_data['content'][0]['type']) && $response_data['content'][0]['type'] === 'text') {
-    $analysis = $response_data['content'][0]['text'] ?? '';
+
+if ($provider === 'anthropic') {
+    // Anthropic format: content[0].text
+    if (isset($response_data['content'][0]['type']) && $response_data['content'][0]['type'] === 'text') {
+        $analysis = $response_data['content'][0]['text'] ?? '';
+    }
+} else {
+    // OpenRouter/OpenAI format: choices[0].message.content
+    if (isset($response_data['choices'][0]['message']['content'])) {
+        $analysis = $response_data['choices'][0]['message']['content'] ?? '';
+    }
 }
 
 if (empty($analysis)) {

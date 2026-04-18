@@ -42,7 +42,7 @@ if ($action === 'update') {
 
 // ── Current values ─────────────────────────────────────────
 $current_key    = $conf->global->CHATBOT_API_KEY ?? '';
-$current_model  = $conf->global->CHATBOT_MODEL ?? 'anthropic/claude-sonnet-4-6';
+$current_model  = $conf->global->CHATBOT_MODEL ?? 'anthropic/claude-haiku-4-5';
 $current_enabled = $conf->global->CHATBOT_ENABLED ?? '1';
 $current_tokens = $conf->global->CHATBOT_MAX_TOKENS ?? '2048';
 
@@ -59,6 +59,7 @@ $models = [
     'openai/gpt-4o'                => '[OpenRouter] GPT-4o',
     'openai/gpt-4o-mini'           => '[OpenRouter] GPT-4o Mini (Économique)',
     'google/gemini-2.0-flash-001'  => '[OpenRouter] Gemini 2.0 Flash',
+    'openai/gpt-oss-20b:free'      => '[OpenRouter] GPT-OSS 20B (GRATUIT)',
     // Native Anthropic
     'claude-sonnet-4-6'            => '[Anthropic] Claude Sonnet 4.6',
     'claude-opus-4-6'              => '[Anthropic] Claude Opus 4.6',
