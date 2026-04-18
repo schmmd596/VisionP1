@@ -214,6 +214,14 @@
         }
 
         appendMsg('user', text, conv);
+
+        // Si c'est un message vocal, ajouter une instruction de correction
+        var messageToSend = text;
+        if (isVoiceMessage) {
+            messageToSend = '[Message de voix - corriger les erreurs de transcription s\'il y en a]\n\n' + text;
+            isVoiceMessage = false;  // Reset
+        }
+
         conv.history.push({ role: 'user', content: text });
         saveStore();
 
@@ -229,7 +237,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: text,
+                message: messageToSend,
                 history: historyToSend,
                 token: (typeof CHATBOT_TOKEN !== 'undefined') ? CHATBOT_TOKEN : ''
             })
@@ -475,6 +483,7 @@
     // ── File Upload Handler ─────────────────────────────────
     // Global for tracking attached files (multiple)
     var attachedFiles = [];
+    var isVoiceMessage = false;  // Track if last message is from voice
 
     function handleFileSelect(file) {
         var validExts = ['png', 'jpg', 'jpeg', 'pdf'];
@@ -906,15 +915,31 @@
     var recognizerActive = false;
     var currentLanguage = 'fr-FR';  // Français par défaut
 
-    // Détecter la langue basée sur la première lettre tapée
+    // Détecter la langue basée sur le texte existant dans la textarea
     function detectLanguage(text) {
         if (!text || text.length === 0) return 'fr-FR';
-        // Arabe: caractères entre U+0600 et U+06FF
-        var firstChar = text.charCodeAt(0);
-        if (firstChar >= 0x0600 && firstChar <= 0x06FF) {
-            return 'ar-SA';  // Arabe
+
+        // Compter les caractères arabes
+        var arabicCount = 0;
+        var totalChars = 0;
+
+        for (var i = 0; i < text.length; i++) {
+            var code = text.charCodeAt(i);
+            // Arabe: U+0600 à U+06FF
+            if (code >= 0x0600 && code <= 0x06FF) {
+                arabicCount++;
+            }
+            // Compter seulement les caractères alphabétiques (pas espaces/ponctuation)
+            if ((code >= 0x0600 && code <= 0x06FF) || (code >= 65 && code <= 122)) {
+                totalChars++;
+            }
         }
-        return 'fr-FR';  // Français défaut
+
+        // Si plus de 30% des caractères sont arabes → arabe
+        if (totalChars > 0 && (arabicCount / totalChars) > 0.3) {
+            return 'ar-SA';
+        }
+        return 'fr-FR';
     }
 
     function startAudioRecording() {
@@ -927,8 +952,8 @@
         }
 
         try {
-            // Détecter la langue du texte existant ou utiliser défaut
-            currentLanguage = detectLanguage(inputEl.value) || 'fr-FR';
+            // Détecter la langue du texte EXISTANT dans la textarea
+            currentLanguage = detectLanguage(inputEl.value);
 
             if (!recognizer) {
                 recognizer = new SpeechRecognition();
@@ -944,8 +969,7 @@
                 isRecording = true;
                 if (recordingInd) {
                     recordingInd.style.display = 'block';
-                    var langLabel = currentLanguage === 'ar-SA' ? 'العربية' : 'Français';
-                    recordingInd.innerHTML = '🔴 ' + langLabel + ' <span id="chatbot-recording-time">0:00</span>';
+                    recordingInd.innerHTML = '🔴 Enregistrement <span id="chatbot-recording-time">0:00</span>';
                 }
                 if (micBtn) micBtn.classList.add('recording');
                 recordingStartTime = Date.now();
@@ -983,8 +1007,11 @@
                 if (recordingInd) recordingInd.style.display = 'none';
                 if (micBtn) micBtn.classList.remove('recording');
 
-                // NE PAS auto-envoyer - laisser l'utilisateur cliquer [Envoyer]
-                // Le texte est déjà dans inputEl, prêt à être envoyé
+                // Marquer que le texte vient de la voix
+                // Claude pourra corriger les erreurs de transcription
+                if (finalText && finalText.trim()) {
+                    isVoiceMessage = true;
+                }
             };
 
             recognizer.onerror = function (event) {
