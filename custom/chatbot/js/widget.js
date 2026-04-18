@@ -184,19 +184,23 @@
     function doSend() {
         var text = inputEl.value.trim();
 
-        // Si un fichier est attaché, l'envoyer même sans texte
-        if (!text && !currentAttachedFile) return;
-        if (isLoading) return;
+        // Si des fichiers sont attachés, les envoyer
+        if (attachedFiles.length > 0) {
+            if (attachedFiles.length === 1) {
+                sendFileWithMessage(attachedFiles[0].file, text);
+            } else {
+                // Pour plusieurs fichiers, envoyer le premier avec tous
+                sendMultipleFiles(attachedFiles, text);
+            }
+        } else if (!text) {
+            return;  // Pas de texte et pas de fichier
+        } else {
+            sendMessage(text);
+        }
 
         inputEl.value = '';
         inputEl.style.height = 'auto';
         inputEl.placeholder = 'Écrivez votre message...';
-
-        if (currentAttachedFile) {
-            sendFileWithMessage(currentAttachedFile, text);
-        } else {
-            sendMessage(text);
-        }
     }
 
     function sendMessage(text) {
@@ -469,9 +473,8 @@
     }
 
     // ── File Upload Handler ─────────────────────────────────
-    // Global for tracking current file being attached
-    var currentAttachedFile = null;
-    var currentFileDataUrl = null;
+    // Global for tracking attached files (multiple)
+    var attachedFiles = [];
 
     function handleFileSelect(file) {
         var validExts = ['png', 'jpg', 'jpeg', 'pdf'];
@@ -488,53 +491,80 @@
             return;
         }
 
-        // Show file preview in message area
+        // Read file and add to attachments
         var reader = new FileReader();
         reader.onload = function (e) {
-            var conv = getActive();
-            if (!conv) return;
+            attachedFiles.push({
+                file: file,
+                dataUrl: e.target.result,
+                ext: ext
+            });
 
-            // Sauvegarder les données du fichier
-            currentAttachedFile = file;
-            currentFileDataUrl = e.target.result;
-
-            // Afficher la preview dans le chat
-            var previewHtml = '';
-            if (ext === 'pdf') {
-                previewHtml = '<div class="chat-file-card">' +
-                    '<div class="file-card-header">📄 ' + file.name + ' <button class="btn-close-file" onclick="window.removeAttachedFile()">✕</button></div>' +
-                    '</div>';
-            } else {
-                previewHtml = '<div class="chat-file-card">' +
-                    '<div class="file-card-header"><button class="btn-close-file" onclick="window.removeAttachedFile()">✕</button></div>' +
-                    '<img src="' + e.target.result + '" class="chat-file-img" />' +
-                    '</div>';
-            }
-
-            // Ajouter au chat comme message utilisateur "en attente"
-            var div = document.createElement('div');
-            div.className = 'chat-message user-message';
-            div.innerHTML = previewHtml;
-            div.id = 'chatbot-file-preview-msg';
-            msgArea.appendChild(div);
-            scrollToBottom();
-
-            // Focus sur la textarea pour que l'utilisateur puisse écrire
+            // Afficher la preview dans la zone input
+            displayAttachedFiles();
             inputEl.focus();
-            inputEl.placeholder = 'Écrivez un message avec cette image...';
         };
         reader.readAsDataURL(file);
     }
 
-    // Fonction globale pour supprimer le fichier attaché
-    window.removeAttachedFile = function() {
-        currentAttachedFile = null;
-        currentFileDataUrl = null;
-        var previewMsg = document.getElementById('chatbot-file-preview-msg');
-        if (previewMsg) previewMsg.remove();
-        inputEl.placeholder = 'Écrivez votre message...';
-        inputEl.focus();
+    function displayAttachedFiles() {
+        // Créer ou récupérer le conteneur d'attachments
+        var attachContainer = document.getElementById('chatbot-attachments-area');
+        if (!attachContainer) {
+            attachContainer = document.createElement('div');
+            attachContainer.id = 'chatbot-attachments-area';
+            var inputArea = document.getElementById('chatbot-input-area');
+            if (inputArea && inputArea.parentNode) {
+                inputArea.parentNode.insertBefore(attachContainer, inputArea);
+            }
+        }
+
+        // Vider et remplir avec les fichiers actuels
+        attachContainer.innerHTML = '';
+
+        attachedFiles.forEach(function(fileObj, index) {
+            var cardHtml = '';
+            if (fileObj.ext === 'pdf') {
+                cardHtml = '<div class="input-file-card">' +
+                    '<div class="file-card-small">📄 ' + fileObj.file.name + '</div>' +
+                    '<button type="button" class="btn-remove-file" onclick="window.removeAttachedFile(' + index + ')">✕</button>' +
+                    '</div>';
+            } else {
+                cardHtml = '<div class="input-file-card input-image-card">' +
+                    '<img src="' + fileObj.dataUrl + '" class="input-file-thumb" />' +
+                    '<button type="button" class="btn-remove-file-image" onclick="window.removeAttachedFile(' + index + ')">✕</button>' +
+                    '</div>';
+            }
+            attachContainer.innerHTML += cardHtml;
+        });
+
+        if (attachedFiles.length > 0) {
+            attachContainer.style.display = 'block';
+        } else {
+            attachContainer.style.display = 'none';
+        }
+    }
+
+    // Fonction globale pour supprimer un fichier attaché
+    window.removeAttachedFile = function(index) {
+        attachedFiles.splice(index, 1);
+        displayAttachedFiles();
+        if (attachedFiles.length === 0) {
+            inputEl.placeholder = 'Écrivez votre message...';
+        }
     };
+
+    function sendMultipleFiles(filesArray, userMessage) {
+        // Pour l'instant, envoyer juste le premier fichier
+        // (L'API Claude ne supporte qu'un fichier à la fois)
+        if (filesArray.length > 0) {
+            sendFileWithMessage(filesArray[0].file, userMessage);
+            // Vider la liste
+            attachedFiles = [];
+            var attachContainer = document.getElementById('chatbot-attachments-area');
+            if (attachContainer) attachContainer.style.display = 'none';
+        }
+    }
 
     function sendFileWithMessage(file, userMessage) {
         var conv = getActive();
@@ -542,9 +572,10 @@
 
         var ext = file.name.split('.').pop().toLowerCase();
 
-        // Supprimer le preview du message
-        var previewMsg = document.getElementById('chatbot-file-preview-msg');
-        if (previewMsg) previewMsg.remove();
+        // Nettoyer les attachments
+        attachedFiles = [];
+        var attachContainer = document.getElementById('chatbot-attachments-area');
+        if (attachContainer) attachContainer.style.display = 'none';
 
         isLoading = true;
         sendBtn.disabled = true;
@@ -913,11 +944,12 @@
                 isRecording = true;
                 if (recordingInd) {
                     recordingInd.style.display = 'block';
-                    var langLabel = currentLanguage === 'ar-SA' ? '🇸🇦 العربية' : '🇫🇷 Français';
-                    recordingInd.innerHTML = '🔴 Enregistrement (' + langLabel + ')... <span id="chatbot-recording-time">0:00</span>';
+                    var langLabel = currentLanguage === 'ar-SA' ? 'العربية' : 'Français';
+                    recordingInd.innerHTML = '🔴 ' + langLabel + ' <span id="chatbot-recording-time">0:00</span>';
                 }
                 if (micBtn) micBtn.classList.add('recording');
                 recordingStartTime = Date.now();
+                finalText = '';  // Reset
             };
 
             recognizer.onresult = function (event) {
@@ -930,9 +962,18 @@
                         interim = transcript;
                     }
                 }
-                // Afficher la transcription en temps réel
-                if (recordingTime && (finalText || interim)) {
-                    recordingTime.textContent = (finalText + interim).substring(0, 40) + '...';
+
+                // AFFICHER EN TEMPS RÉEL dans la textarea
+                var displayText = finalText + interim;
+                inputEl.value = displayText.trim();
+
+                // Support RTL pour l'arabe
+                if (currentLanguage === 'ar-SA') {
+                    inputEl.style.direction = 'rtl';
+                    inputEl.style.textAlign = 'right';
+                } else {
+                    inputEl.style.direction = 'ltr';
+                    inputEl.style.textAlign = 'left';
                 }
             };
 
@@ -942,11 +983,8 @@
                 if (recordingInd) recordingInd.style.display = 'none';
                 if (micBtn) micBtn.classList.remove('recording');
 
-                // Auto-envoyer le texte transcrit
-                if (finalText && finalText.trim()) {
-                    inputEl.value = finalText.trim();
-                    setTimeout(doSend, 200);
-                }
+                // NE PAS auto-envoyer - laisser l'utilisateur cliquer [Envoyer]
+                // Le texte est déjà dans inputEl, prêt à être envoyé
             };
 
             recognizer.onerror = function (event) {
