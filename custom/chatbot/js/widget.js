@@ -661,89 +661,101 @@
         }
     }
 
+    // ── Web Speech API (Reconnaissance vocale native) ──────────
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var recognizer = null;
+
     function startAudioRecording() {
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
-            isRecording = true;
-            audioChunks = [];
-            recordingStartTime = Date.now();
+        if (!SpeechRecognition) {
+            appendMsg('error', '❌ Reconnaissance vocale non supportée par votre navigateur', getActive());
+            return;
+        }
 
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-            mediaRecorder.ondataavailable = function (event) {
-                audioChunks.push(event.data);
+        try {
+            recognizer = new SpeechRecognition();
+            recognizer.language = 'fr-FR';
+            recognizer.continuous = false;
+            recognizer.interimResults = true;
+            recognizer.maxAlternatives = 1;
+
+            var interimText = '';
+            recognizer.onstart = function () {
+                isRecording = true;
+                if (recordingInd) recordingInd.style.display = 'block';
+                if (micBtn) micBtn.classList.add('recording');
+                recordingStartTime = Date.now();
+
+                // Update time
+                var timeInterval = setInterval(function () {
+                    if (!isRecording) { clearInterval(timeInterval); return; }
+                    var elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                    if (recordingTime) recordingTime.textContent = Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0');
+                }, 100);
             };
-            mediaRecorder.onstop = function () {
-                var audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                sendAudio(audioBlob);
-                stream.getTracks().forEach(function (track) { track.stop(); });
+
+            recognizer.onresult = function (event) {
+                interimText = '';
+                for (var i = event.resultIndex; i < event.results.length; i++) {
+                    var transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        interimText += transcript + ' ';
+                    } else {
+                        interimText += transcript;
+                    }
+                }
+                if (recordingTime && interimText) {
+                    recordingTime.textContent = '📝 ' + interimText.substring(0, 30);
+                }
             };
 
-            mediaRecorder.start();
-            if (recordingInd) recordingInd.style.display = 'flex';
-            if (micBtn) micBtn.classList.add('recording');
+            recognizer.onerror = function (event) {
+                isRecording = false;
+                if (recordingInd) recordingInd.style.display = 'none';
+                if (micBtn) micBtn.classList.remove('recording');
+                appendMsg('error', '❌ Erreur: ' + event.error, getActive());
+            };
 
-            // Update recording time
-            var recordingInterval = setInterval(function () {
-                if (!isRecording) { clearInterval(recordingInterval); return; }
-                var elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-                if (recordingTime) recordingTime.textContent = Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0');
-                if (elapsed > 120) stopAudioRecording();
-            }, 100);
-        }).catch(function (err) {
+            recognizer.onend = function () {
+                isRecording = false;
+                if (recordingInd) recordingInd.style.display = 'none';
+                if (micBtn) micBtn.classList.remove('recording');
+            };
+
+            recognizer.start();
+        } catch (err) {
             appendMsg('error', '❌ Erreur microphone: ' + err.message, getActive());
-        });
+        }
     }
 
     function stopAudioRecording() {
-        if (!isRecording || !mediaRecorder) return;
-        isRecording = false;
-        mediaRecorder.stop();
-        if (recordingInd) recordingInd.style.display = 'none';
-        if (micBtn) micBtn.classList.remove('recording');
+        if (!recognizer || !isRecording) return;
+        recognizer.stop();
+        // onend sera appelé automatiquement
     }
 
-    function sendAudio(audioBlob) {
-        var conv = getActive();
-        if (!conv) return;
-
-        var reader = new FileReader();
-        reader.onload = function (e) {
-            var audioBase64 = e.target.result.split(',')[1];
-            var duration = (Date.now() - recordingStartTime) / 1000;
-
-            isLoading = true;
-            sendBtn.disabled = true;
-            var typingId = addTyping();
-
-            fetch(CHATBOT_AJAX_URL.replace('/chat.php', '/audio-handler.php'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    audio_base64: audioBase64,
-                    audio_duration: duration
-                })
-            }).then(function (response) {
-                return response.json();
-            }).then(function (data) {
-                removeTyping(typingId);
-                isLoading = false;
-                sendBtn.disabled = false;
-
-                if (data.success && data.transcribed_text) {
-                    inputEl.value = data.transcribed_text;
-                    inputEl.focus();
-                    // Auto-send the transcribed message
-                    setTimeout(doSend, 200);
-                } else {
-                    appendMsg('error', '❌ Erreur transcription: ' + (data.error || 'Inconnue'), conv);
-                }
-            }).catch(function (err) {
-                removeTyping(typingId);
-                isLoading = false;
-                sendBtn.disabled = false;
-                appendMsg('error', '❌ Erreur réseau audio: ' + err.message, conv);
-            });
+    // Override handleRecognitionResult
+    if (recognizer) {
+        recognizer.onend = function () {
+            isRecording = false;
+            if (recordingInd) recordingInd.style.display = 'none';
+            if (micBtn) micBtn.classList.remove('recording');
         };
-        reader.readAsDataURL(audioBlob);
+
+        var originalOnResult = recognizer.onresult;
+        recognizer.onresult = function (event) {
+            originalOnResult.call(this, event);
+            // Auto-send si final
+            if (event.results[event.results.length - 1].isFinal) {
+                var finalText = '';
+                for (var i = event.resultIndex; i < event.results.length; i++) {
+                    finalText += event.results[i][0].transcript;
+                }
+                if (finalText) {
+                    inputEl.value = finalText;
+                    setTimeout(doSend, 300);
+                }
+            }
+        };
     }
 
     // ── Utils ─────────────────────────────────────────────────
