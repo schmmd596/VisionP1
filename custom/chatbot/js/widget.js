@@ -42,26 +42,6 @@
         var inputArea = document.getElementById('chatbot-input-area');
         if (!inputArea) return;  // Exit if no input area
 
-        // Create language selector
-        if (!document.getElementById('chatbot-lang-selector')) {
-            var langBtn = document.createElement('button');
-            langBtn.id = 'chatbot-lang-selector';
-            langBtn.className = 'chatbot-action-btn';
-            langBtn.type = 'button';
-            langBtn.title = 'Changer la langue (Français/العربية)';
-            langBtn.textContent = '🌐';
-            inputArea.insertBefore(langBtn, inputArea.firstChild);
-
-            langBtn.addEventListener('click', function() {
-                // Toggle between French and Arabic
-                currentLanguage = currentLanguage === 'ar-SA' ? 'fr-FR' : 'ar-SA';
-                var conv = getActive();
-                if (conv) conv.language = currentLanguage;
-                saveStore();
-                langBtn.title = currentLanguage === 'ar-SA' ? 'Langue: العربية (Arabe) - Cliquez pour Français' : 'Langue: Français - Cliquez pour العربية';
-            });
-        }
-
         // Create upload button
         if (!document.getElementById('chatbot-upload-btn')) {
             var uploadBtn = document.createElement('button');
@@ -70,7 +50,7 @@
             uploadBtn.type = 'button';
             uploadBtn.title = 'Joindre un fichier (PNG, JPG, PDF)';
             uploadBtn.textContent = '📎';
-            inputArea.insertBefore(uploadBtn, document.getElementById('chatbot-mic-btn') || inputArea.lastChild);
+            inputArea.insertBefore(uploadBtn, inputArea.firstChild);
 
             var fileInput = document.createElement('input');
             fileInput.id = 'chatbot-file-input';
@@ -1001,8 +981,23 @@
         }
 
         try {
-            // Détecter la langue du texte EXISTANT dans la textarea
+            // Détecter la langue intelligemment:
+            // 1. Regarder le texte actuellement dans la textarea
+            // 2. Si vide, regarder la dernière langue de la conversation
+            // 3. Sinon défaut français
             currentLanguage = detectLanguage(inputEl.value);
+            if (!inputEl.value || inputEl.value.trim() === '') {
+                // Textarea vide - chercher la langue de la dernière message utilisateur
+                if (conv && conv.history && conv.history.length > 0) {
+                    for (var i = conv.history.length - 1; i >= 0; i--) {
+                        if (conv.history[i].role === 'user') {
+                            var lastLang = detectLanguage(conv.history[i].content);
+                            currentLanguage = lastLang;
+                            break;
+                        }
+                    }
+                }
+            }
 
             if (!recognizer) {
                 recognizer = new SpeechRecognition();
@@ -1023,6 +1018,15 @@
                 if (micBtn) micBtn.classList.add('recording');
                 recordingStartTime = Date.now();
                 finalText = '';  // Reset
+
+                // Appliquer RTL immédiatement si arabe
+                if (currentLanguage === 'ar-SA') {
+                    inputEl.style.direction = 'rtl';
+                    inputEl.style.textAlign = 'right';
+                } else {
+                    inputEl.style.direction = 'ltr';
+                    inputEl.style.textAlign = 'left';
+                }
             };
 
             recognizer.onresult = function (event) {
