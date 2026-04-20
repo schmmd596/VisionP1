@@ -147,13 +147,15 @@ $tools = [
     ]],
     ['type' => 'function', 'function' => [
         'name' => 'get_bank_transactions',
-        'description' => 'Récupère les mouvements bancaires d\'un compte.',
+        'description' => 'Récupère les mouvements bancaires d\'un compte avec filtres.',
         'parameters' => ['type' => 'object', 'properties' => [
             'account_id' => ['type' => 'integer', 'description' => 'ID du compte bancaire (utiliser get_bank_accounts pour obtenir)'],
             'period'     => ['type' => 'string', 'enum' => ['today', 'week', 'month', 'year', 'all'], 'default' => 'month'],
             'type'       => ['type' => 'string', 'enum' => ['all', 'credit', 'debit'], 'default' => 'all'],
+            'reconciliation_status' => ['type' => 'string', 'enum' => ['all', 'reconciled', 'pending'], 'default' => 'all', 'description' => 'Filtrer par statut rapprochement'],
+            'search_label' => ['type' => 'string', 'description' => 'Rechercher dans le libellé'],
             'limit'      => ['type' => 'integer', 'default' => 20],
-        ]],
+        ], 'required' => ['account_id']],
     ]],
     ['type' => 'function', 'function' => [
         'name' => 'get_payments',
@@ -298,7 +300,7 @@ $tools = [
     ]],
     ['type' => 'function', 'function' => [
         'name' => 'create_payment',
-        'description' => 'Enregistre un paiement sur une facture (client ou fournisseur).',
+        'description' => 'Enregistre un paiement sur une facture (client ou fournisseur) via un compte bancaire.',
         'parameters' => ['type' => 'object', 'properties' => [
             'invoice_id'     => ['type' => 'integer', 'description' => 'ID de la facture à payer'],
             'invoice_ref'    => ['type' => 'string', 'description' => 'Ou la référence de la facture'],
@@ -307,8 +309,8 @@ $tools = [
             'payment_mode'   => ['type' => 'string', 'enum' => ['VIR', 'CHQ', 'CB', 'LIQ', 'PRE'], 'description' => 'VIR=virement, CHQ=chèque, CB=carte, LIQ=espèces, PRE=prélèvement', 'default' => 'VIR'],
             'date'           => ['type' => 'string', 'description' => 'Date du paiement (YYYY-MM-DD)'],
             'num_payment'    => ['type' => 'string', 'description' => 'Numéro du chèque/virement'],
-            'bank_account_id' => ['type' => 'integer', 'description' => 'ID compte bancaire (utiliser get_bank_accounts)'],
-        ], 'required' => ['type']],
+            'bank_account_id' => ['type' => 'integer', 'description' => 'ID compte bancaire (OBLIGATOIRE - utiliser get_bank_accounts)'],
+        ], 'required' => ['type', 'bank_account_id']],
     ]],
     ['type' => 'function', 'function' => [
         'name' => 'create_order',
@@ -374,11 +376,34 @@ $tools = [
         'name' => 'create_stock_movement',
         'description' => 'Ajoute ou retire du stock pour un produit (mouvement de stock).',
         'parameters' => ['type' => 'object', 'properties' => [
-            'product_id'  => ['type' => 'integer', 'description' => 'ID du produit (utiliser search_products pour le trouver)'],
-            'warehouse_id'=> ['type' => 'integer', 'description' => 'ID de l\'entrepôt', 'default' => 1],
-            'qty'         => ['type' => 'number', 'description' => 'Quantité à ajouter (positif) ou retirer (négatif)'],
-            'label'       => ['type' => 'string', 'description' => 'Libellé du mouvement (ex: Correction, Inventaire)'],
+            'product_id'   => ['type' => 'integer', 'description' => 'ID du produit (utiliser search_products pour le trouver)'],
+            'warehouse_id' => ['type' => 'integer', 'description' => 'ID de l\'entrepôt', 'default' => 1],
+            'qty'          => ['type' => 'number', 'description' => 'Quantité à ajouter (positif) ou retirer (négatif)'],
+            'label'        => ['type' => 'string', 'description' => 'Libellé du mouvement (ex: Correction, Inventaire)'],
+            'reason_code'  => ['type' => 'string', 'enum' => ['receipt', 'delivery', 'adjustment', 'inventory'], 'description' => 'Motif du mouvement'],
+            'origin_document' => ['type' => 'string', 'description' => 'Référence document source (ex: FA2401-001)'],
+            'batch_number' => ['type' => 'string', 'description' => 'Numéro de lot/série'],
         ], 'required' => ['product_id', 'qty', 'label']],
+    ]],
+
+    // ── GESTION STOCK AVANCÉE ───────────────────────────────
+    ['type' => 'function', 'function' => [
+        'name' => 'get_stock_analysis',
+        'description' => 'Analyse complète du stock : produits alerte, stocks morts, rotation lente. Retourne recommandations (réapprovisionner, liquider, etc.)',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'analysis_type' => ['type' => 'string', 'enum' => ['alerts', 'dead_stock', 'slow_movers', 'all'], 'description' => 'Type d\'analyse', 'default' => 'all'],
+            'days_old' => ['type' => 'integer', 'description' => 'Considérer comme stock mort si pas de mouvement depuis N jours', 'default' => 90],
+            'limit' => ['type' => 'integer', 'description' => 'Nombre max de produits', 'default' => 10],
+        ], 'required' => []],
+    ]],
+    ['type' => 'function', 'function' => [
+        'name' => 'forecast_stock_needs',
+        'description' => 'Prédiction stock : analyse tendances ventes et prédit ruptures futures. Recommande quantités achat.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'product_id' => ['type' => 'integer', 'description' => 'ID produit (analyser tous les produits si vide)'],
+            'months_ahead' => ['type' => 'integer', 'description' => 'Prédire pour N mois à venir', 'default' => 3],
+            'lookback_months' => ['type' => 'integer', 'description' => 'Analyser les N derniers mois d\'historique', 'default' => 12],
+        ], 'required' => []],
     ]],
     ['type' => 'function', 'function' => [
         'name' => 'delete_element',
@@ -410,6 +435,89 @@ $tools = [
             'type'      => ['type' => 'string', 'enum' => ['ecriture', 'verification', 'calcul_impot', 'conseil', 'correction'], 'description' => 'Type de conseil demandé'],
         ], 'required' => ['question']],
     ]],
+
+    // ── VISION & OCR ─────────────────────────────────────────
+    ['type' => 'function', 'function' => [
+        'name' => 'analyze_invoice_image',
+        'description' => 'Analyse une image de facture et extrait les informations clés : montant, date, fournisseur/client, lignes, TVA, etc. Retourne les données structurées en JSON.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'image_base64' => ['type' => 'string', 'description' => 'Contenu base64 de l\'image (PNG, JPG)'],
+            'type'         => ['type' => 'string', 'enum' => ['facture_fournisseur', 'facture_client'], 'description' => 'Type de facture à analyser'],
+        ], 'required' => ['image_base64', 'type']],
+    ]],
+    ['type' => 'function', 'function' => [
+        'name' => 'auto_create_from_image',
+        'description' => 'Crée automatiquement une facture (fournisseur ou client) à partir d\'une image. Crée aussi client/fournisseur/produits s\'ils n\'existent pas. Utiliser après analyze_invoice_image ou directement avec l\'image.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'image_base64'      => ['type' => 'string', 'description' => 'Contenu base64 de l\'image'],
+            'type'              => ['type' => 'string', 'enum' => ['facture_fournisseur', 'facture_client'], 'description' => 'Type de facture'],
+            'third_party_name'  => ['type' => 'string', 'description' => 'Nom du fournisseur/client à utiliser (sinon extraction depuis image)'],
+            'force_create'      => ['type' => 'boolean', 'description' => 'Créer même si tiers/produits existent', 'default' => false],
+        ], 'required' => ['image_base64', 'type']],
+    ]],
+
+    // ── COMPTABILITÉ AVANCÉE ─────────────────────────────────
+    ['type' => 'function', 'function' => [
+        'name' => 'create_accounting_entry',
+        'description' => 'Crée manuellement une écriture comptable double (débits = crédits). Utiliser pour corrections comptables ou écritures spéciales.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'journal_code'   => ['type' => 'string', 'enum' => ['VT', 'AC', 'BQ', 'OD'], 'description' => 'Code journal : VT=Ventes, AC=Achats, BQ=Banque, OD=Opérations Diverses'],
+            'doc_date'       => ['type' => 'string', 'description' => 'Date de l\'écriture (YYYY-MM-DD)'],
+            'doc_reference'  => ['type' => 'string', 'description' => 'Référence document (ex: FA2401-0001)'],
+            'debit_lines'    => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                'account_number' => ['type' => 'string', 'description' => 'Numéro compte (ex: 512, 411, 607)'],
+                'account_label'  => ['type' => 'string', 'description' => 'Libellé du compte'],
+                'amount'         => ['type' => 'number', 'description' => 'Montant débit'],
+            ], 'required' => ['account_number', 'amount']]],
+            'credit_lines'   => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                'account_number' => ['type' => 'string'],
+                'account_label'  => ['type' => 'string'],
+                'amount'         => ['type' => 'number', 'description' => 'Montant crédit'],
+            ], 'required' => ['account_number', 'amount']]],
+        ], 'required' => ['journal_code', 'doc_date', 'debit_lines', 'credit_lines']],
+    ]],
+    ['type' => 'function', 'function' => [
+        'name' => 'get_balance_sheet',
+        'description' => 'Génère un bilan comptable (actif/passif) en MRU. Retourne le bilan structuré avec totaux.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'date_end'    => ['type' => 'string', 'description' => 'Date de fin du bilan (YYYY-MM-DD, défaut = aujourd\'hui)'],
+            'detail_level' => ['type' => 'string', 'enum' => ['summary', 'detailed'], 'description' => 'Niveau de détail', 'default' => 'summary'],
+        ], 'required' => []],
+    ]],
+    ['type' => 'function', 'function' => [
+        'name' => 'get_income_statement',
+        'description' => 'Génère un compte de résultat (produits/charges) en MRU pour une période. Calcule le résultat net.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'period'       => ['type' => 'string', 'enum' => ['month', 'year'], 'description' => 'Mois ou année actuelle', 'default' => 'year'],
+            'date_start'   => ['type' => 'string', 'description' => 'Date début (YYYY-MM-DD, optionnel)'],
+            'date_end'     => ['type' => 'string', 'description' => 'Date fin (YYYY-MM-DD, optionnel)'],
+            'detail_level' => ['type' => 'string', 'enum' => ['summary', 'detailed'], 'default' => 'summary'],
+        ], 'required' => []],
+    ]],
+
+    // ── BANQUE AVANCÉE ───────────────────────────────────────
+    ['type' => 'function', 'function' => [
+        'name' => 'reconcile_bank_transaction',
+        'description' => 'Marque une transaction bancaire comme rapprochée (réconciliée) et optionnellement la lie à une facture.',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'transaction_id' => ['type' => 'integer', 'description' => 'ID de la transaction bancaire'],
+            'reconciliation_category' => ['type' => 'integer', 'description' => 'ID catégorie rapprochement (obtenir via get_bank_accounts)'],
+            'invoice_id' => ['type' => 'integer', 'description' => 'ID facture à lier (optionnel)'],
+            'invoice_type' => ['type' => 'string', 'enum' => ['client', 'fournisseur'], 'description' => 'Type de facture (si invoice_id fourni)'],
+        ], 'required' => ['transaction_id']],
+    ]],
+    ['type' => 'function', 'function' => [
+        'name' => 'transfer_between_banks',
+        'description' => 'Effectue un virement entre 2 comptes bancaires (débite compte source, crédite compte destination).',
+        'parameters' => ['type' => 'object', 'properties' => [
+            'source_account_id'      => ['type' => 'integer', 'description' => 'ID compte source (celui qui débite)'],
+            'destination_account_id' => ['type' => 'integer', 'description' => 'ID compte destination (celui qui crédite)'],
+            'amount'                 => ['type' => 'number', 'description' => 'Montant du virement en MRU'],
+            'date'                   => ['type' => 'string', 'description' => 'Date du virement (YYYY-MM-DD)'],
+            'reference'              => ['type' => 'string', 'description' => 'Référence du virement (ex: VIR-2401-001)'],
+            'label'                  => ['type' => 'string', 'description' => 'Libellé/description'],
+        ], 'required' => ['source_account_id', 'destination_account_id', 'amount']],
+    ]],
 ];
 
 // ============================================================
@@ -432,21 +540,40 @@ Modules actifs : ".$modules_str."
 === CAPACITÉS COMPLÈTES ===
 Tu gères TOUTES les fonctionnalités du système ERP, incluant tous les modules standards et les modules customisés qui ont été créés :
 
+**GESTION COMMERCIALE :**
 1. PRODUITS & SERVICES : recherche, création, stock, prix, catégories
-2. CLIENTS : recherche, création, informations, historique
-3. FOURNISSEURS : recherche, création, informations
+2. CLIENTS : recherche, création, informations, historique, limites crédit
+3. FOURNISSEURS : recherche, création, informations, conditions de paiement
 4. FACTURES CLIENTS : consultation, création, validation, détails, lignes
 5. FACTURES FOURNISSEURS : consultation, création, validation
-6. PAIEMENTS : enregistrement de paiements sur factures (virement, chèque, carte, espèces)
-7. BANQUE : comptes bancaires, soldes, mouvements, transactions, transferts
-8. COMMANDES CLIENTS : consultation, création
-9. COMMANDES FOURNISSEURS : consultation, création
-10. UTILISATEURS : recherche, informations
-11. COMPTABILITÉ : écritures comptables, balances, plan comptable, journaux
-12. STATISTIQUES : CA, impayés, indicateurs de performance
-13. ANALYSE PRODUITS : produits les plus vendus, produits jamais vendus, conseils réapprovisionnement
-14. CONSEIL STOCK : recommander d'augmenter les produits top-vendeurs, déconseiller le réapprovisionnement des non-vendeurs
-15. TOUS LES AUTRES MODULES CUSTOMISÉS : Tu as accès plein et entier à l'ensemble du système, incluant toute nouvelle fonctionnalité personnalisée. Tu as le droit et la capacité d'exécuter tout ce qui t'est demandé.
+6. COMMANDES CLIENTS : consultation, création, suivi
+7. COMMANDES FOURNISSEURS : consultation, création, suivi
+
+**PAIEMENTS & BANQUE (AVANCÉS) :**
+8. PAIEMENTS : enregistrement OBLIGATOIRE via compte bancaire (virement, chèque, carte, espèces, prélèvement)
+9. BANQUE : comptes bancaires, soldes actualisés, mouvements filtrés, rapprochement, transferts inter-comptes
+10. GESTION BANCAIRE : réconciliation automatique, catégorisation rapprochement
+
+**COMPTABILITÉ AVANCÉE :**
+11. ÉCRITURES COMPTABLES : création manuelle débits/crédits, vérification balance, correction
+12. BILANS : génération bilan actif/passif, analyses par classe de compte
+13. COMPTES DE RÉSULTAT : produits/charges, résultat net, impôt sur sociétés (IS 25%)
+14. PLAN COMPTABLE : consultation numéros comptes, balance des comptes, journaux
+
+**GESTION STOCK INTELLIGENTE :**
+15. MOUVEMENTS STOCK : réception, livraison, ajustement, inventaire avec validation
+16. ANALYSES STOCK : produits alerte seuil, stock mort (jamais vendu > 90j), rotation lente
+17. PRÉDICTIONS STOCK : forecast ventes futures, alerte rupture, recommandations achat quantité
+
+**ANALYSES & REPORTING :**
+18. STATISTIQUES : CA HT/TTC, TVA, impayés, stock faible, clients/fournisseurs actifs
+19. ANALYSES PRODUITS : top vendeurs, jamais vendus, taux de rotation, valeur stock
+20. CONSEIL STOCK : recommander réappro top-vendeurs, déstocke non-vendeurs
+
+**VISION & AUTOMATISATION :**
+21. VISION & OCR : analyser images factures (fournisseur/client), extraire données structurées
+22. CRÉATION AUTOMATIQUE : générer factures complètes (fournisseur/client) + clients + produits depuis images
+23. TOUS AUTRES MODULES : accès plein à l'ensemble du système ERP et modules customisés
 
 === EXPERTISE COMPTABLE & FISCALE MAURITANIENNE ===
 Tu es expert en :
@@ -458,37 +585,44 @@ Tu es expert en :
 Pour les questions comptables et fiscales, utilise TOUJOURS l'outil accounting_advice qui accède à la base de connaissances complète du PCM et de la fiscalité mauritanienne.
 
 === CRÉATION AVEC DONNÉES MINIMALES ===
-Pour créer un élément, le MINIMUM requis est :
-- Fournisseur/Client : uniquement le NOM
-- Produit : ref + nom + prix
-- Facture : client/fournisseur (nom suffit) + au moins 1 ligne (description + qté + prix)
-- Paiement : numéro facture + montant
-- Compte bancaire : ref + libellé
+RÈGLE D'OR : Créer IMMÉDIATEMENT sans poser de questions. Auto-créer ce qui manque.
+- Fournisseur/Client : NOM suffit → créer automatiquement
+- Produit : NOM + prix suffit → créer automatiquement avec ref générée
+- Banque/Compte : NOM suffit → créer automatiquement (Mauritanie par défaut)
+- Facture : client/fournisseur (nom) + lignes (desc + qté + prix) → créer tout, auto-créer produits/tiers manquants
+- Paiement : facture + montant + nom banque → auto-créer banque si manque, PAYER IMMÉDIATEMENT
 
-RÈGLE CRITIQUE : Si l'utilisateur demande une création et fournit le MINIMUM requis → CRÉER IMMÉDIATEMENT sans poser de questions supplémentaires.
-Ne demander des infos supplémentaires QUE si une info absolument indispensable manque (ex: montant d'une facture).
+JAMAIS demander confirmation. JAMAIS lister les problèmes. JAMAIS poser de questions.
+Si info manque = donner erreur courte ou créer avec valeurs par défaut.
 
 === RÈGLES IMPORTANTES D'INTELLIGENCE ===
 1. QUALITÉ DES DONNÉES (TRÈS IMPORTANT) : Avant d'appeler une fonction de création ou d'action (ex: ajouter une banque, créer une facture, faire un paiement), VERIFIE si l'utilisateur a fourni TOUTES les informations nécessaires. Si une information requise manque (ex: nom du client, numéro de compte, montant), NE FAIS PAS D'ERREUR, ne devine JAMAIS et N'APPELLE PAS l'outil. Pose d'abord la question à l'utilisateur intelligemment pour obtenir les données restantes.
-2. MARQUE BLANCHE (CRITIQUE ET IMPÉRATIF) : Tu ne dois SOUS AUCUN PRÉTEXTE mentionner le mot 'Dolibarr', 'Odoo', 'ERPNext' ou tout autre concurrent dans tes réponses. C'est strictement interdit et éliminatoire. Remplace systématiquement par 'le système', 'ce système' ou 'votre plateforme'. Aucune exception.
+2. VALIDATION BANCAIRE (IMPÉRATIF) : Pour TOUT paiement (create_payment), tu DOIS toujours :
+   - Appeler d'abord get_bank_accounts pour voir les comptes disponibles
+   - Demander à l'utilisateur quel compte utiliser (ou suggérer le compte par défaut)
+   - Ne JAMAIS créer un paiement sans bank_account_id valide
+3. MARQUE BLANCHE (CRITIQUE ET IMPÉRATIF) : Tu ne dois SOUS AUCUN PRÉTEXTE mentionner le mot 'Dolibarr', 'Odoo', 'ERPNext' ou tout autre concurrent dans tes réponses. C'est strictement interdit et éliminatoire. Remplace systématiquement par 'le système', 'ce système' ou 'votre plateforme'. Aucune exception.
 
 === RÈGLES ===
 1. Si la question ne concerne PAS la gestion d'entreprise, la comptabilité ou la fiscalité, réponds :
    \"Je suis Tafkir IA, dédié à la gestion de votre entreprise, la comptabilité et la fiscalité mauritanienne. Je ne peux pas répondre à cette question.\"
 2. Toujours utiliser les outils pour obtenir des données réelles — ne jamais inventer de chiffres
-3. RÉPONSES ULTRA-COURTES (TRÈS IMPORTANT POUR ÉCONOMISER LES TOKENS) : Répondre UNIQUEMENT à ce qui est demandé :
-   - Question simple → 1-3 lignes maximum
-   - Liste de données → tableau compact SANS introduction ni conclusion
-   - Création réussie → 1 seule ligne confirmant l'action (ex: \"Fournisseur Ahmed créé\")
-   - JAMAIS d'intro, JAMAIS de conclusion, JAMAIS d'explications non demandées
-   - Si l'utilisateur demande \"affiche-moi mes produits\" → donner le tableau DIRECTEMENT sans \"Voici...\"
+3. RÉPONSES ULTRA-COURTES (CRITIQUE) : Max 1 ligne pour création, 2-3 pour questions. Jamais d'intro/conclusion :
+   - Création réussie → EXACTEMENT 1 LIGNE : \"✓ Facture créée, produit auto-créé, paiement Sedad enregistré\"
+   - Erreur → 1 LIGNE : \"❌ Montant required ou Produit 'pomme' absent\"
+   - Données/Tableau → DIRECTEMENT sans \"Voici...\" ou \"Ci-dessous...\"
+   - JAMAIS de question, JAMAIS d'alternatives, JAMAIS d'explications
+   - JAMAIS mentionner actions internes (\"J'ai cherché...\", \"J'ai créé d'abord...\")
 4. Pour créer une facture : chercher d'abord le client/fournisseur
-5. Pour enregistrer un paiement : chercher d'abord la facture et le compte bancaire
-6. Présenter les données en tableaux markdown quand c'est pertinent (sans intro ni conclusion)
-7. Si l'utilisateur dit bonjour/salut/hello/مرحبا : répondre avec un message de bienvenue court (3 lignes max) sans lister les fonctionnalités
-8. Pour les conseils comptables : toujours référencer le numéro de compte du PCM
-9. Pour les calculs fiscaux : appliquer les taux en vigueur en Mauritanie
-10. TVA mauritanienne = 16% (pas 20%)
+5. Pour enregistrer un paiement : chercher d'abord la facture ET un compte bancaire (OBLIGATOIRE)
+6. Pour une écriture comptable : vérifier TOUJOURS que débits = crédits avant création
+7. Présenter les données en tableaux markdown quand c'est pertinent (sans intro ni conclusion)
+8. Si l'utilisateur dit bonjour/salut/hello/مرحبا : répondre avec un message de bienvenue court (3 lignes max) sans lister les fonctionnalités
+9. Pour les conseils comptables : toujours référencer le numéro de compte du PCM
+10. Pour les calculs fiscaux : appliquer les taux en vigueur en Mauritanie (IS=25%, TVA=16%, IMF, IRPP)
+11. TVA mauritanienne = 16%, IS = 25%
+12. Pour stock : prioriser les analyses de produits à alerte seuil (réappro immédiat)
+13. Pour paiements : TOUJOURS utiliser les comptes bancaires existants (interdiction de créer paiement sans compte)
 
 === MONNAIE ===
 La monnaie est l'Ouguiya mauritanien (MRU). Utiliser MRU dans toutes les réponses.
@@ -795,7 +929,7 @@ function tool_get_bank_accounts($db, $args) {
     $sql = "SELECT ba.rowid, ba.label, ba.number, ba.bank, ba.code_banque, ba.iban_prefix as iban, ba.bic as swift, ba.courant, ba.clos,
                    ba.solde, ba.currency_code, ba.min_allowed, ba.min_desired
             FROM ".MAIN_DB_PREFIX."bank_account ba
-            WHERE ba.entity = {$entity} AND ba.clos = 0
+            WHERE ba.entity IN (0, {$entity})
             ORDER BY ba.label LIMIT {$limit}";
     $res = $db->query($sql);
     $accounts = [];
@@ -822,14 +956,19 @@ function tool_get_bank_transactions($db, $args) {
     $limit  = min((int)($args['limit'] ?? 20), 50);
     $period = $args['period'] ?? 'month';
     $type = $args['type'] ?? 'all';
+    $reconciliation_status = $args['reconciliation_status'] ?? 'all';
+    $search_label = !empty($args['search_label']) ? $db->escape($args['search_label']) : '';
 
     $where = "b.fk_account IN (SELECT rowid FROM ".MAIN_DB_PREFIX."bank_account WHERE entity = {$entity})";
     if ($account_id > 0) $where = "b.fk_account = {$account_id}";
     $where .= get_period_filter($db, $period, 'b.datev');
     if ($type === 'credit') $where .= " AND b.amount > 0";
     elseif ($type === 'debit') $where .= " AND b.amount < 0";
+    if ($reconciliation_status === 'reconciled') $where .= " AND b.fk_cat > 0";
+    elseif ($reconciliation_status === 'pending') $where .= " AND (b.fk_cat IS NULL OR b.fk_cat = 0)";
+    if (!empty($search_label)) $where .= " AND b.label LIKE '%{$search_label}%'";
 
-    $sql = "SELECT b.rowid, b.datev, b.dateo, b.amount, b.label, b.num_chq, b.fk_type, b.emetteur, ba.label as compte
+    $sql = "SELECT b.rowid, b.datev, b.dateo, b.amount, b.label, b.num_chq, b.fk_type, b.fk_cat, b.emetteur, ba.label as compte
             FROM ".MAIN_DB_PREFIX."bank b
             LEFT JOIN ".MAIN_DB_PREFIX."bank_account ba ON ba.rowid = b.fk_account
             WHERE {$where}
@@ -840,7 +979,8 @@ function tool_get_bank_transactions($db, $args) {
     if ($res) while ($row = $db->fetch_object($res)) {
         if ($row->amount > 0) $total_credit += $row->amount;
         else $total_debit += abs($row->amount);
-        $list[] = ['id'=>$row->rowid,'date'=>$row->datev,'montant'=>number_format($row->amount,2).' MRU','sens'=>$row->amount>0?'Crédit':'Débit','libelle'=>$row->label,'num'=>$row->num_chq,'emetteur'=>$row->emetteur,'type'=>$row->fk_type,'compte'=>$row->compte];
+        $is_reconciled = $row->fk_cat > 0 ? 'Oui' : 'Non';
+        $list[] = ['id'=>$row->rowid,'date'=>$row->datev,'montant'=>number_format($row->amount,2).' MRU','sens'=>$row->amount>0?'Crédit':'Débit','libelle'=>$row->label,'num'=>$row->num_chq,'emetteur'=>$row->emetteur,'type'=>$row->fk_type,'compte'=>$row->compte,'rapproche'=>$is_reconciled];
     }
     return ['count'=>count($list),'transactions'=>$list,'total_credit'=>number_format($total_credit,2).' MRU','total_debit'=>number_format($total_debit,2).' MRU'];
 }
@@ -1120,7 +1260,29 @@ function tool_create_payment($db, $args, $user) {
     $type = $args['type'] ?? 'client';
     $invoice_id = (int)($args['invoice_id'] ?? 0);
     $invoice_ref = $db->escape($args['invoice_ref'] ?? '');
+    $bank_account_id = (int)($args['bank_account_id'] ?? 0);
+    $bank_name = $db->escape($args['bank_name'] ?? '');
     $entity = (int)$GLOBALS['conf']->entity;
+
+    // If bank_account_id missing but bank_name provided, try to find or create it
+    if ($bank_account_id <= 0 && !empty($bank_name)) {
+        $sql_find = "SELECT rowid FROM ".MAIN_DB_PREFIX."bank_account WHERE label LIKE '%{$bank_name}%' AND entity IN (0, {$entity}) LIMIT 1";
+        $res_find = $db->query($sql_find);
+        if ($res_find && ($row_bank = $db->fetch_object($res_find))) {
+            $bank_account_id = $row_bank->rowid;
+        } else {
+            // Auto-create bank account
+            $bank_create = tool_create_bank_account($db, ['ref' => substr($bank_name, 0, 10), 'label' => $bank_name, 'country' => 'MR'], $user);
+            if (isset($bank_create['id'])) {
+                $bank_account_id = $bank_create['id'];
+            }
+        }
+    }
+
+    // Validate bank account exists
+    if ($bank_account_id <= 0) {
+        return ['success'=>false,'error'=>'Banque introuvable'];
+    }
 
     // Find invoice
     if ($type === 'client') {
@@ -1152,12 +1314,9 @@ function tool_create_payment($db, $args, $user) {
 
         $pid = $p->create($user, 1);
         if ($pid > 0) {
-            // Link to bank account if provided
-            $bank_id = (int)($args['bank_account_id'] ?? 0);
-            if ($bank_id > 0) {
-                $p->addPaymentToBank($user, 'payment', '(CustomerInvoicePayment)', $bank_id, '', '');
-            }
-            return ['success'=>true,'payment_id'=>$pid,'facture_ref'=>$f->ref,'montant'=>number_format($amount,2).' MRU','mode'=>$payment_mode,'message'=>'Paiement enregistré avec succès'];
+            // Link to bank account (already validated above)
+            $p->addPaymentToBank($user, 'payment', '(CustomerInvoicePayment)', $bank_account_id, '', '');
+            return ['success'=>true,'payment_id'=>$pid,'facture_ref'=>$f->ref,'montant'=>number_format($amount,2).' MRU','mode'=>$payment_mode,'bank_account_id'=>$bank_account_id,'message'=>'Paiement enregistré avec succès'];
         }
         return ['success'=>false,'error'=>$p->error??'Erreur lors du paiement'];
 
@@ -1189,11 +1348,9 @@ function tool_create_payment($db, $args, $user) {
 
         $pid = $p->create($user, 1);
         if ($pid > 0) {
-            $bank_id = (int)($args['bank_account_id'] ?? 0);
-            if ($bank_id > 0) {
-                $p->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $bank_id, '', '');
-            }
-            return ['success'=>true,'payment_id'=>$pid,'facture_ref'=>$f->ref,'montant'=>number_format($amount,2).' MRU','mode'=>$payment_mode,'message'=>'Paiement fournisseur enregistré'];
+            // Link to bank account (already validated above)
+            $p->addPaymentToBank($user, 'payment_supplier', '(SupplierInvoicePayment)', $bank_account_id, '', '');
+            return ['success'=>true,'payment_id'=>$pid,'facture_ref'=>$f->ref,'montant'=>number_format($amount,2).' MRU','mode'=>$payment_mode,'bank_account_id'=>$bank_account_id,'message'=>'Paiement fournisseur enregistré'];
         }
         return ['success'=>false,'error'=>$p->error??'Erreur paiement fournisseur'];
     }
@@ -1318,6 +1475,7 @@ function execute_tool($name, $input, $db, $user) {
         case 'get_accounting_entries':     return tool_get_accounting_entries($db, $input);
         case 'get_account_balance':        return tool_get_account_balance($db, $input);
         case 'get_chart_of_accounts':      return tool_get_chart_of_accounts($db, $input);
+        case 'get_product_sales_stats':    return tool_get_product_sales_stats($db, $input);
         case 'create_product':             return tool_create_product($db, $input, $user);
         case 'create_client':              return tool_create_client($db, $input, $user);
         case 'create_fournisseur':         return tool_create_fournisseur($db, $input, $user);
@@ -1331,6 +1489,15 @@ function execute_tool($name, $input, $db, $user) {
         case 'create_stock_movement':      return tool_create_stock_movement($db, $input, $user);
         case 'delete_element':             return tool_delete_element($db, $input, $user);
         case 'accounting_advice':          return tool_accounting_advice($db, $input);
+        case 'analyze_invoice_image':      return tool_analyze_invoice_image($db, $input, $user);
+        case 'auto_create_from_image':     return tool_auto_create_from_image($db, $input, $user);
+        case 'create_accounting_entry':    return tool_create_accounting_entry($db, $input, $user);
+        case 'get_balance_sheet':          return tool_get_balance_sheet($db, $input);
+        case 'get_income_statement':       return tool_get_income_statement($db, $input);
+        case 'reconcile_bank_transaction': return tool_reconcile_bank_transaction($db, $input, $user);
+        case 'transfer_between_banks':     return tool_transfer_between_banks($db, $input, $user);
+        case 'get_stock_analysis':         return tool_get_stock_analysis($db, $input);
+        case 'forecast_stock_needs':       return tool_forecast_stock_needs($db, $input);
         default:                           return ['error' => 'Outil inconnu: '.$name];
     }
 }
@@ -1558,10 +1725,22 @@ function tool_create_stock_movement($db, $args, $user) {
     $mov->qty = floatval($args['qty']);
     $mov->label = $args['label'];
     $mov->datem = dol_now();
-    
+    $mov->batch_number = $args['batch_number'] ?? '';
+    $mov->origin_document = $args['origin_document'] ?? '';
+
+    // Validate no negative stock unless explicitly allowed
+    $sql_check = "SELECT stock FROM ".MAIN_DB_PREFIX."product WHERE rowid = ".(int)$args['product_id'];
+    $res_check = $db->query($sql_check);
+    if ($res_check && ($row_prod = $db->fetch_object($res_check))) {
+        $new_stock = ($row_prod->stock ?? 0) + floatval($args['qty']);
+        if ($new_stock < 0) {
+            return ['error' => 'Stock insuffisant. Stock actuel: '.$row_prod->stock.', demande: '.$args['qty']];
+        }
+    }
+
     $res = $mov->_create($user);
     if ($res > 0) {
-        return ['success' => true, 'id' => $res, 'message' => "Mouvement de stock enregistré avec succès."];
+        return ['success' => true, 'id' => $res, 'reason' => $args['reason_code'] ?? 'adjustment', 'message' => "Mouvement de stock enregistré avec succès."];
     } else {
         return ['error' => 'Erreur enregistrement stock: ' . $mov->error];
     }
@@ -1571,7 +1750,7 @@ function tool_delete_element($db, $args, $user) {
     $id = (int)$args['id'];
     $type = $args['type'];
     $obj = null;
-    
+
     if ($type === 'product') {
         require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
         $obj = new Product($db);
@@ -1590,7 +1769,7 @@ function tool_delete_element($db, $args, $user) {
     } else {
         return ['error' => "Type non supporté."];
     }
-    
+
     $res = $obj->fetch($id);
     if ($res > 0) {
         $del = $obj->delete($user);
@@ -1602,4 +1781,627 @@ function tool_delete_element($db, $args, $user) {
     } else {
         return ['error' => "Élément introuvable avec l'ID $id."];
     }
+}
+
+function tool_analyze_invoice_image($db, $args, $user) {
+    $image_base64 = $args['image_base64'] ?? '';
+    $invoice_type = $args['type'] ?? 'facture_fournisseur';
+
+    if (empty($image_base64)) {
+        return ['error' => 'image_base64 est requis'];
+    }
+
+    // Call LLM vision API to analyze the image
+    global $api_key, $provider, $api_url, $model;
+
+    $vision_prompt = "Analyse cette image de facture et retourne un JSON avec les champs:\n";
+    if ($invoice_type === 'facture_fournisseur') {
+        $vision_prompt .= "- supplier_name: nom du fournisseur\n- supplier_nif: NIF/SIRET si visible\n- invoice_ref: numéro de facture\n- invoice_date: date (YYYY-MM-DD)\n- items: [{description, quantity, unit_price, total_ht}, ...]\n- total_ht: total HT\n- total_tva: TVA\n- total_ttc: total TTC\n- payment_terms: conditions de paiement si visibles";
+    } else {
+        $vision_prompt .= "- client_name: nom du client\n- client_nif: NIF si visible\n- invoice_ref: numéro de facture\n- invoice_date: date (YYYY-MM-DD)\n- items: [{description, quantity, unit_price, total_ht}, ...]\n- total_ht: total HT\n- total_tva: TVA\n- total_ttc: total TTC\n";
+    }
+    $vision_prompt .= "Retourne UNIQUEMENT du JSON valide, pas d'autre texte.";
+
+    // Build vision message
+    if ($provider === 'anthropic') {
+        $image_source = ['type' => 'base64', 'media_type' => 'image/jpeg', 'data' => $image_base64];
+        $msgs = [['role' => 'user', 'content' => [
+            ['type' => 'image', 'source' => $image_source],
+            ['type' => 'text', 'text' => $vision_prompt]
+        ]]];
+    } else {
+        $msgs = [['role' => 'user', 'content' => [
+            ['type' => 'image_url', 'image_url' => ['url' => 'data:image/jpeg;base64,'.$image_base64]],
+            ['type' => 'text', 'text' => $vision_prompt]
+        ]]];
+    }
+
+    // Call API
+    $payload = ($provider === 'anthropic') ?
+        json_encode(['model' => $model, 'max_tokens' => 1024, 'messages' => $msgs], JSON_UNESCAPED_UNICODE) :
+        json_encode(['model' => $model, 'max_tokens' => 1024, 'messages' => $msgs], JSON_UNESCAPED_UNICODE);
+
+    $headers = ($provider === 'anthropic') ?
+        ['Content-Type: application/json', 'x-api-key: '.$api_key, 'anthropic-version: 2023-06-01'] :
+        ['Content-Type: application/json', 'Authorization: Bearer '.$api_key];
+
+    $ch = curl_init($api_url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_POSTFIELDS=>$payload, CURLOPT_TIMEOUT=>30, CURLOPT_HTTPHEADER=>$headers]);
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http_code !== 200) {
+        return ['error' => 'Erreur API vision ('.$http_code.')'];
+    }
+
+    $data = json_decode($response, true);
+    $text = '';
+
+    if ($provider === 'anthropic') {
+        foreach ($data['content'] ?? [] as $b) {
+            if (($b['type']??'') === 'text') $text = $b['text'];
+        }
+    } else {
+        $text = $data['choices'][0]['message']['content'] ?? '';
+    }
+
+    // Extract JSON from response
+    if (preg_match('/\{.*\}/s', $text, $matches)) {
+        $parsed = json_decode($matches[0], true);
+        return ['success' => true, 'type' => $invoice_type, 'data' => $parsed, 'raw_response' => $text];
+    }
+
+    return ['success' => false, 'error' => 'Impossible de parser la réponse vision', 'response' => $text];
+}
+
+function tool_create_accounting_entry($db, $args, $user) {
+    require_once DOL_DOCUMENT_ROOT.'/accountancy/class/bookkeeping.class.php';
+
+    $journal_code = $args['journal_code'] ?? 'OD';
+    $doc_date = !empty($args['doc_date']) ? strtotime($args['doc_date']) : dol_now();
+    $doc_reference = $args['doc_reference'] ?? 'MANUAL-'.date('YmdHis');
+    $debit_lines = $args['debit_lines'] ?? [];
+    $credit_lines = $args['credit_lines'] ?? [];
+    $entity = (int)$GLOBALS['conf']->entity;
+
+    if (empty($debit_lines) || empty($credit_lines)) {
+        return ['error' => 'Fournir au moins 1 ligne débit et 1 ligne crédit'];
+    }
+
+    // Calculate totals
+    $total_debit = 0;
+    foreach ($debit_lines as $line) {
+        $total_debit += floatval($line['amount'] ?? 0);
+    }
+    $total_credit = 0;
+    foreach ($credit_lines as $line) {
+        $total_credit += floatval($line['amount'] ?? 0);
+    }
+
+    // Validate balance
+    if (abs($total_debit - $total_credit) > 0.01) {
+        return ['error' => 'Débits ('.number_format($total_debit,2).') ≠ Crédits ('.number_format($total_credit,2).')'];
+    }
+
+    // Create entries
+    $bookkeeping = new BookKeeping($db);
+    $entries_created = 0;
+    $piece_num = $bookkeeping->getNextNumMvt('') ?? date('YmdHis');
+
+    // Insert debit lines
+    foreach ($debit_lines as $line) {
+        $account_number = $line['account_number'] ?? '';
+        $account_label = $line['account_label'] ?? $account_number;
+        $amount = floatval($line['amount'] ?? 0);
+
+        $bookkeeping->createFromValues(
+            $doc_date, $doc_reference, 'manual', 0, 0, $account_number, $account_label, $account_label,
+            $amount, $journal_code, 'Manual entry', ''
+        );
+        $entries_created++;
+    }
+
+    // Insert credit lines (negative amounts)
+    foreach ($credit_lines as $line) {
+        $account_number = $line['account_number'] ?? '';
+        $account_label = $line['account_label'] ?? $account_number;
+        $amount = floatval($line['amount'] ?? 0);
+
+        $bookkeeping->createFromValues(
+            $doc_date, $doc_reference, 'manual', 0, 0, $account_number, $account_label, $account_label,
+            -$amount, $journal_code, 'Manual entry', ''
+        );
+        $entries_created++;
+    }
+
+    return [
+        'success' => true,
+        'piece_num' => $piece_num,
+        'entries_created' => $entries_created,
+        'total_debit' => number_format($total_debit, 2).' MRU',
+        'total_credit' => number_format($total_credit, 2).' MRU',
+        'message' => "Écriture comptable créée avec succès"
+    ];
+}
+
+function tool_get_balance_sheet($db, $args, $user) {
+    $date_end = !empty($args['date_end']) ? strtotime($args['date_end']) : dol_now();
+    $detail_level = $args['detail_level'] ?? 'summary';
+    $entity = (int)$GLOBALS['conf']->entity;
+
+    // Classes: 1=Immob, 2=Stocks, 3=Créances, 4=Trésor, 5=Capitaux, 6=Dettes court terme, 7=Dettes LT
+    $classes = [
+        '1' => 'Immobilisations corporelles',
+        '2' => 'Stocks',
+        '3' => 'Créances clients',
+        '4' => 'Trésorerie',
+        '5' => 'Capitaux propres',
+        '6' => 'Dettes court terme',
+        '7' => 'Dettes long terme'
+    ];
+
+    $actif_classes = ['1', '2', '3', '4'];
+    $passif_classes = ['5', '6', '7'];
+
+    $sql = "SELECT SUBSTRING(numero_compte, 1, 1) as classe, numero_compte,
+                   SUM(IF(debit IS NOT NULL, debit, 0)) as total_debit,
+                   SUM(IF(credit IS NOT NULL, credit, 0)) as total_credit
+            FROM ".MAIN_DB_PREFIX."accounting_bookkeeping
+            WHERE entity = {$entity} AND doc_date <= '".$db->idate($date_end)."'
+            GROUP BY classe, numero_compte
+            ORDER BY classe, numero_compte";
+
+    $res = $db->query($sql);
+    $data = [];
+
+    if ($res) {
+        while ($row = $db->fetch_object($res)) {
+            $classe = $row->classe;
+            if (!isset($data[$classe])) $data[$classe] = [];
+            $solde = floatval($row->total_debit) - floatval($row->total_credit);
+            $data[$classe][] = ['account' => $row->numero_compte, 'debit' => $row->total_debit, 'credit' => $row->total_credit, 'balance' => $solde];
+        }
+    }
+
+    // Build balance sheet
+    $actif_total = 0;
+    $actif = ['Actif' => []];
+    foreach ($actif_classes as $c) {
+        if (isset($data[$c])) {
+            $classe_total = 0;
+            foreach ($data[$c] as $item) {
+                $classe_total += $item['balance'];
+            }
+            $actif['Actif'][$classes[$c]] = number_format($classe_total, 2).' MRU';
+            $actif_total += $classe_total;
+        }
+    }
+
+    $passif_total = 0;
+    $passif = ['Passif' => []];
+    foreach ($passif_classes as $c) {
+        if (isset($data[$c])) {
+            $classe_total = 0;
+            foreach ($data[$c] as $item) {
+                $classe_total += $item['balance'];
+            }
+            $passif['Passif'][$classes[$c]] = number_format($classe_total, 2).' MRU';
+            $passif_total += $classe_total;
+        }
+    }
+
+    return [
+        'date_end' => date('Y-m-d', $date_end),
+        'actif' => $actif,
+        'actif_total' => number_format($actif_total, 2).' MRU',
+        'passif' => $passif,
+        'passif_total' => number_format($passif_total, 2).' MRU',
+        'difference' => number_format($actif_total - $passif_total, 2).' MRU (doit être ~0)',
+    ];
+}
+
+function tool_get_income_statement($db, $args, $user) {
+    $period = $args['period'] ?? 'year';
+    $date_start = !empty($args['date_start']) ? strtotime($args['date_start']) : dol_mktime(0, 0, 0, 1, 1, (int)date('Y'));
+    $date_end = !empty($args['date_end']) ? strtotime($args['date_end']) : dol_now();
+    if ($period === 'month') {
+        $date_start = dol_mktime(0, 0, 0, (int)date('m'), 1, (int)date('Y'));
+    }
+    $entity = (int)$GLOBALS['conf']->entity;
+
+    // Classe 6 = Charges, Classe 7 = Produits
+    $sql = "SELECT SUBSTRING(numero_compte, 1, 1) as classe,
+                   SUM(IF(debit IS NOT NULL, debit, 0)) as total_debit,
+                   SUM(IF(credit IS NOT NULL, credit, 0)) as total_credit
+            FROM ".MAIN_DB_PREFIX."accounting_bookkeeping
+            WHERE entity = {$entity}
+              AND doc_date >= '".$db->idate($date_start)."'
+              AND doc_date <= '".$db->idate($date_end)."'
+              AND (SUBSTRING(numero_compte, 1, 1) = '6' OR SUBSTRING(numero_compte, 1, 1) = '7')
+            GROUP BY classe";
+
+    $res = $db->query($sql);
+    $charges = 0;
+    $produits = 0;
+
+    if ($res) {
+        while ($row = $db->fetch_object($res)) {
+            if ($row->classe === '6') {
+                $charges = floatval($row->total_debit) - floatval($row->total_credit);
+            } elseif ($row->classe === '7') {
+                $produits = floatval($row->total_credit) - floatval($row->total_debit);
+            }
+        }
+    }
+
+    $resultat = $produits - $charges;
+    $is_pretax = $resultat;
+    $is = $is_pretax * 0.25; // 25% IS Mauritanie
+    $resultat_net = $is_pretax - $is;
+
+    return [
+        'periode' => $period,
+        'date_start' => date('Y-m-d', $date_start),
+        'date_end' => date('Y-m-d', $date_end),
+        'produits' => number_format($produits, 2).' MRU',
+        'charges' => number_format($charges, 2).' MRU',
+        'resultat_exploitation' => number_format($resultat, 2).' MRU',
+        'is_provisoire' => number_format($is, 2).' MRU (25%)',
+        'resultat_net' => number_format($resultat_net, 2).' MRU',
+    ];
+}
+
+function tool_get_stock_analysis($db, $args, $user) {
+    $analysis_type = $args['analysis_type'] ?? 'all';
+    $days_old = (int)($args['days_old'] ?? 90);
+    $limit = min((int)($args['limit'] ?? 10), 50);
+    $entity = (int)$GLOBALS['conf']->entity;
+
+    $result = [];
+
+    // 1. Products below alert threshold
+    if (in_array($analysis_type, ['alerts', 'all'])) {
+        $sql = "SELECT rowid, ref, label, stock, seuil_stock_alerte
+                FROM ".MAIN_DB_PREFIX."product
+                WHERE entity = {$entity} AND tosell = 1
+                  AND stock IS NOT NULL AND seuil_stock_alerte IS NOT NULL
+                  AND stock <= seuil_stock_alerte AND stock > 0
+                ORDER BY stock ASC LIMIT {$limit}";
+        $res = $db->query($sql);
+        $alerts = [];
+        if ($res) while ($row = $db->fetch_object($res)) {
+            $alerts[] = [
+                'ref' => $row->ref,
+                'label' => $row->label,
+                'stock_current' => $row->stock,
+                'seuil_alerte' => $row->seuil_stock_alerte,
+                'recommendation' => 'Réapprovisionner dès que possible'
+            ];
+        }
+        $result['stock_alerts'] = $alerts;
+    }
+
+    // 2. Dead stock (no movement for N days)
+    if (in_array($analysis_type, ['dead_stock', 'all'])) {
+        $date_threshold = dol_now() - ($days_old * 86400);
+        $sql = "SELECT p.rowid, p.ref, p.label, p.stock, MAX(f.datef) as last_sale
+                FROM ".MAIN_DB_PREFIX."product p
+                LEFT JOIN ".MAIN_DB_PREFIX."facturedet fd ON fd.fk_product = p.rowid
+                LEFT JOIN ".MAIN_DB_PREFIX."facture f ON f.rowid = fd.fk_facture
+                WHERE p.entity = {$entity} AND p.tosell = 1 AND p.stock > 0
+                GROUP BY p.rowid
+                HAVING MAX(f.datef) IS NULL OR MAX(f.datef) < '{$db->idate($date_threshold)}'
+                ORDER BY p.stock DESC LIMIT {$limit}";
+        $res = $db->query($sql);
+        $dead = [];
+        if ($res) while ($row = $db->fetch_object($res)) {
+            $days_inactive = empty($row->last_sale) ? 999 : (int)((dol_now() - strtotime($row->last_sale)) / 86400);
+            $dead[] = [
+                'ref' => $row->ref,
+                'label' => $row->label,
+                'stock_locked' => $row->stock,
+                'last_sale_days_ago' => $days_inactive === 999 ? 'Jamais vendu' : $days_inactive,
+                'recommendation' => 'Considérer déstockage / liquidation'
+            ];
+        }
+        $result['dead_stock'] = $dead;
+    }
+
+    // 3. Slow movers (low sales frequency)
+    if (in_array($analysis_type, ['slow_movers', 'all'])) {
+        $sql = "SELECT p.rowid, p.ref, p.label, p.stock,
+                       COUNT(DISTINCT f.rowid) as nb_sales_year,
+                       SUM(fd.qty) as qty_sold_year
+                FROM ".MAIN_DB_PREFIX."product p
+                LEFT JOIN ".MAIN_DB_PREFIX."facturedet fd ON fd.fk_product = p.rowid
+                LEFT JOIN ".MAIN_DB_PREFIX."facture f ON f.rowid = fd.fk_facture AND f.datef >= '{$db->idate(dol_now() - 365*86400)}'
+                WHERE p.entity = {$entity} AND p.tosell = 1 AND p.stock > 0
+                GROUP BY p.rowid
+                HAVING nb_sales_year < 5 OR nb_sales_year IS NULL
+                ORDER BY qty_sold_year ASC LIMIT {$limit}";
+        $res = $db->query($sql);
+        $slow = [];
+        if ($res) while ($row = $db->fetch_object($res)) {
+            $slow[] = [
+                'ref' => $row->ref,
+                'label' => $row->label,
+                'stock_locked' => $row->stock,
+                'sales_year' => $row->nb_sales_year ?? 0,
+                'qty_sold_year' => $row->qty_sold_year ?? 0,
+                'recommendation' => 'Réduire les commandes fournisseur, considérer la fin de produit'
+            ];
+        }
+        $result['slow_movers'] = $slow;
+    }
+
+    return ['success' => true, 'type' => $analysis_type, 'analysis' => $result];
+}
+
+function tool_forecast_stock_needs($db, $args, $user) {
+    $product_id = (int)($args['product_id'] ?? 0);
+    $months_ahead = (int)($args['months_ahead'] ?? 3);
+    $lookback_months = (int)($args['lookback_months'] ?? 12);
+    $entity = (int)$GLOBALS['conf']->entity;
+
+    $date_start_lookback = dol_now() - ($lookback_months * 30.44 * 86400);
+
+    // Get historical sales
+    $sql = "SELECT p.rowid, p.ref, p.label, p.stock,
+                   YEAR(f.datef) as year, MONTH(f.datef) as month,
+                   SUM(fd.qty) as qty_month
+            FROM ".MAIN_DB_PREFIX."product p
+            LEFT JOIN ".MAIN_DB_PREFIX."facturedet fd ON fd.fk_product = p.rowid
+            LEFT JOIN ".MAIN_DB_PREFIX."facture f ON f.rowid = fd.fk_facture
+            WHERE p.entity = {$entity} AND p.tosell = 1
+              AND f.datef >= '{$db->idate($date_start_lookback)}'";
+    if ($product_id > 0) $sql .= " AND p.rowid = {$product_id}";
+    $sql .= " GROUP BY p.rowid, year, month ORDER BY p.rowid, year, month";
+
+    $res = $db->query($sql);
+    $products_forecast = [];
+
+    if ($res) while ($row = $db->fetch_object($res)) {
+        $key = $row->rowid;
+        if (!isset($products_forecast[$key])) {
+            $products_forecast[$key] = [
+                'ref' => $row->ref,
+                'label' => $row->label,
+                'stock_current' => $row->stock,
+                'monthly_sales' => []
+            ];
+        }
+        $month_key = $row->year.'-'.str_pad($row->month, 2, '0', STR_PAD_LEFT);
+        $products_forecast[$key]['monthly_sales'][$month_key] = $row->qty_month ?? 0;
+    }
+
+    // Calculate forecasts
+    $forecasts = [];
+    foreach ($products_forecast as $prod) {
+        $sales_avg = count($prod['monthly_sales']) > 0 ? array_sum($prod['monthly_sales']) / count($prod['monthly_sales']) : 0;
+        $stock_current = (float)$prod['stock_current'];
+        $months_supply = $sales_avg > 0 ? $stock_current / $sales_avg : 999;
+        $projected_depletion = null;
+
+        if ($months_supply < $months_ahead) {
+            $projected_depletion = date('Y-m-d', dol_now() + ($months_supply * 30.44 * 86400));
+            $recommended_qty = ($sales_avg * $months_ahead) - $stock_current;
+        } else {
+            $recommended_qty = 0;
+        }
+
+        $forecasts[] = [
+            'product_ref' => $prod['ref'],
+            'product_label' => $prod['label'],
+            'stock_current' => (int)$stock_current,
+            'monthly_avg_sales' => round($sales_avg, 1),
+            'months_of_supply' => round($months_supply, 1),
+            'projected_depletion_date' => $projected_depletion ?? 'Pas de rupture en vue',
+            'recommended_buy_quantity' => max(0, (int)ceil($recommended_qty)),
+            'urgency' => ($months_supply < 1) ? 'CRITIQUE' : (($months_supply < 2) ? 'HAUTE' : 'NORMAL')
+        ];
+    }
+
+    // Sort by urgency
+    usort($forecasts, function($a, $b) {
+        $urgency_order = ['CRITIQUE' => 0, 'HAUTE' => 1, 'NORMAL' => 2];
+        return ($urgency_order[$a['urgency']] ?? 999) - ($urgency_order[$b['urgency']] ?? 999);
+    });
+
+    return [
+        'success' => true,
+        'months_ahead' => $months_ahead,
+        'lookback_months' => $lookback_months,
+        'forecasts' => array_slice($forecasts, 0, 10)
+    ];
+}
+
+function tool_reconcile_bank_transaction($db, $args, $user) {
+    require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+
+    $transaction_id = (int)($args['transaction_id'] ?? 0);
+    $reconciliation_category = (int)($args['reconciliation_category'] ?? 0);
+    $invoice_id = (int)($args['invoice_id'] ?? 0);
+    $invoice_type = $args['invoice_type'] ?? 'client';
+
+    if ($transaction_id <= 0) {
+        return ['error' => 'transaction_id invalide'];
+    }
+
+    // Load the transaction
+    $sql = "SELECT * FROM ".MAIN_DB_PREFIX."bank WHERE rowid = {$transaction_id}";
+    $res = $db->query($sql);
+    if (!$res || !($row = $db->fetch_object($res))) {
+        return ['error' => 'Transaction introuvable'];
+    }
+
+    // Mark as reconciled
+    $sql_upd = "UPDATE ".MAIN_DB_PREFIX."bank SET fk_cat = ".($reconciliation_category > 0 ? $reconciliation_category : 'NULL');
+    $sql_upd .= " WHERE rowid = {$transaction_id}";
+    $db->query($sql_upd);
+
+    // Link to invoice if provided
+    if ($invoice_id > 0) {
+        $table = ($invoice_type === 'fournisseur') ? MAIN_DB_PREFIX."facture_fourn" : MAIN_DB_PREFIX."facture";
+        $sql_chk = "SELECT rowid FROM {$table} WHERE rowid = {$invoice_id}";
+        $res_chk = $db->query($sql_chk);
+        if ($res_chk && ($row_inv = $db->fetch_object($res_chk))) {
+            // Link via bank->url_id (documented in bank schema)
+            $sql_link = "UPDATE ".MAIN_DB_PREFIX."bank SET url_id = {$invoice_id} WHERE rowid = {$transaction_id}";
+            $db->query($sql_link);
+        }
+    }
+
+    return [
+        'success' => true,
+        'transaction_id' => $transaction_id,
+        'reconciled' => true,
+        'message' => 'Transaction marquée comme rapprochée'
+    ];
+}
+
+function tool_transfer_between_banks($db, $args, $user) {
+    require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
+
+    $source_account_id = (int)($args['source_account_id'] ?? 0);
+    $destination_account_id = (int)($args['destination_account_id'] ?? 0);
+    $amount = floatval($args['amount'] ?? 0);
+    $date = !empty($args['date']) ? strtotime($args['date']) : dol_now();
+    $reference = $args['reference'] ?? 'VIREMENT-'.date('YmdHis');
+    $label = $args['label'] ?? "Virement de ".$source_account_id." vers ".$destination_account_id;
+
+    if ($source_account_id <= 0 || $destination_account_id <= 0 || $amount <= 0) {
+        return ['error' => 'source_account_id, destination_account_id et amount sont obligatoires et > 0'];
+    }
+
+    // Verify both accounts exist
+    $sql_src = "SELECT rowid, label FROM ".MAIN_DB_PREFIX."bank_account WHERE rowid = {$source_account_id}";
+    $src = $db->fetch_object($db->query($sql_src));
+    if (!$src) return ['error' => 'Compte source introuvable'];
+
+    $sql_dst = "SELECT rowid, label FROM ".MAIN_DB_PREFIX."bank_account WHERE rowid = {$destination_account_id}";
+    $dst = $db->fetch_object($db->query($sql_dst));
+    if (!$dst) return ['error' => 'Compte destination introuvable'];
+
+    // Create debit line on source account
+    $acc_src = new Account($db);
+    $acc_src->fetch($source_account_id);
+    $acc_src->addline($date, 'VIR', "Virement vers ".$dst->label, -$amount, 0, '', $user);
+
+    // Create credit line on destination account
+    $acc_dst = new Account($db);
+    $acc_dst->fetch($destination_account_id);
+    $acc_dst->addline($date, 'VIR', "Virement depuis ".$src->label, $amount, 0, '', $user);
+
+    return [
+        'success' => true,
+        'source_account_id' => $source_account_id,
+        'destination_account_id' => $destination_account_id,
+        'amount' => number_format($amount, 2).' MRU',
+        'reference' => $reference,
+        'message' => "Virement créé avec succès"
+    ];
+}
+
+function tool_auto_create_from_image($db, $args, $user) {
+    $image_base64 = $args['image_base64'] ?? '';
+    $invoice_type = $args['type'] ?? 'facture_fournisseur';
+    $force_create = $args['force_create'] ?? false;
+    $entity = (int)$GLOBALS['conf']->entity;
+
+    if (empty($image_base64)) {
+        return ['error' => 'image_base64 est requis'];
+    }
+
+    // First analyze the image
+    $analysis = tool_analyze_invoice_image($db, ['image_base64' => $image_base64, 'type' => $invoice_type], $user);
+    if (!($analysis['success'] ?? false)) {
+        return ['error' => 'Impossible d\'analyser l\'image: '.$analysis['error']??'Erreur inconnue'];
+    }
+
+    $extracted = $analysis['data'] ?? [];
+
+    // Get or create third party
+    require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
+    $societe = new Societe($db);
+    $third_party_name = $args['third_party_name'] ?? ($invoice_type === 'facture_fournisseur' ? $extracted['supplier_name'] : $extracted['client_name']) ?? 'Inconnu';
+
+    // Search existing
+    $sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."societe WHERE nom LIKE '%".$db->escape($third_party_name)."%' AND entity={$entity} LIMIT 1";
+    $res = $db->query($sql);
+    $third_party_id = 0;
+
+    if ($res && ($row = $db->fetch_object($res))) {
+        $third_party_id = $row->rowid;
+    } else {
+        // Create new
+        $societe->nom = $third_party_name;
+        $societe->entity = $entity;
+        if ($invoice_type === 'facture_fournisseur') {
+            $societe->fournisseur = 1;
+        } else {
+            $societe->client = 1;
+        }
+        if (!empty($extracted['supplier_nif'] ?? $extracted['client_nif'] ?? '')) {
+            $societe->siren = $extracted['supplier_nif'] ?? $extracted['client_nif'];
+        }
+        $third_party_id = $societe->create($user);
+        if ($third_party_id <= 0) {
+            return ['error' => 'Erreur création tiers: '.$societe->error];
+        }
+    }
+
+    // Create invoice with items
+    if ($invoice_type === 'facture_fournisseur') {
+        require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.facture.class.php';
+        $facture = new FactureFournisseur($db);
+        $facture->fk_soc = $third_party_id;
+        $facture->type = 0;
+    } else {
+        require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+        $facture = new Facture($db);
+        $facture->socid = $third_party_id;
+        $facture->type = 0;
+    }
+
+    $facture->entity = $entity;
+    $facture->datef = !empty($extracted['invoice_date']) ? strtotime($extracted['invoice_date']) : dol_now();
+    $facture->ref_supplier = $extracted['invoice_ref'] ?? '';
+
+    $facture_id = $facture->create($user);
+    if ($facture_id <= 0) {
+        return ['error' => 'Erreur création facture: '.$facture->error];
+    }
+
+    // Add lines
+    $nb_lines = 0;
+    foreach ($extracted['items'] ?? [] as $item) {
+        $desc = $item['description'] ?? 'Ligne';
+        $qty = floatval($item['quantity'] ?? 1);
+        $price = floatval($item['unit_price'] ?? 0);
+        $tva = floatval($item['tva'] ?? 16);
+
+        if ($invoice_type === 'facture_fournisseur') {
+            $facture->addline($desc, $price, $tva, 0, 0, $qty, 0, 0);
+        } else {
+            $facture->addline($desc, $price, $qty, $tva);
+        }
+        $nb_lines++;
+    }
+
+    // Validate
+    $facture->validate($user);
+    $facture->fetch($facture_id);
+
+    return [
+        'success' => true,
+        'message' => 'Facture créée automatiquement',
+        'invoice_id' => $facture_id,
+        'invoice_ref' => $facture->ref,
+        'third_party_id' => $third_party_id,
+        'third_party_name' => $third_party_name,
+        'lines_count' => $nb_lines,
+        'total_ht' => number_format($facture->total_ht, 2).' MRU',
+        'total_ttc' => number_format($facture->total_ttc, 2).' MRU',
+    ];
 }
