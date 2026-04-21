@@ -38,20 +38,21 @@ $history      = $input['history'] ?? [];
 $max_tokens   = (int)($conf->global->CHATBOT_MAX_TOKENS ?? 2048);
 $file_context = $input['file_context'] ?? '';  // For file analysis context
 $user_language = $input['language'] ?? 'fr-FR';  // User's detected language
+$model        = $conf->global->CHATBOT_MODEL ?? 'anthropic/claude-sonnet-4-6';
 
-// Detect API provider from key prefix
+// Detect API provider from key prefix or model name
 if (strpos($api_key, 'sk-or-') === 0) {
     $provider    = 'openrouter';
     $api_url     = 'https://openrouter.ai/api/v1/chat/completions';
-    $model       = $conf->global->CHATBOT_MODEL ?? 'anthropic/claude-sonnet-4-6';
 } elseif (strpos($api_key, 'sk-ant-') === 0) {
     $provider    = 'anthropic';
     $api_url     = 'https://api.anthropic.com/v1/messages';
-    $model       = $conf->global->CHATBOT_MODEL ?? 'claude-sonnet-4-6';
+} elseif (strpos($model, 'mistral-') === 0 || strpos($model, 'pixtral-') === 0) {
+    $provider    = 'mistral';
+    $api_url     = 'https://api.mistral.ai/v1/chat/completions';
 } else {
     $provider    = 'openai';
     $api_url     = 'https://api.openai.com/v1/chat/completions';
-    $model       = $conf->global->CHATBOT_MODEL ?? 'gpt-4o';
 }
 
 if (empty($user_message)) die(json_encode(['error' => 'Message vide']));

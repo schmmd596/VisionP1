@@ -66,6 +66,10 @@ $models = [
     // Native OpenAI
     'gpt-4o'                       => '[OpenAI] GPT-4o',
     'gpt-4o-mini'                  => '[OpenAI] GPT-4o Mini',
+    // Mistral AI
+    'mistral-nemo'                 => '[Mistral] Mistral Nemo (Rapide & Efficace)',
+    'mistral-large-latest'         => '[Mistral] Mistral Large (Le plus puissant)',
+    'pixtral-12b-2409'             => '[Mistral] Pixtral 12B (Vision)',
 ];
 
 // ── Page render ────────────────────────────────────────────
