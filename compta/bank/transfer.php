@@ -98,6 +98,7 @@ if ($action == 'add' && $user->hasRight('banque', 'transfer')) {
 		$accountfrom[$i] = GETPOSTINT($i.'_account_from');
 		$accountto[$i] = GETPOSTINT($i.'_account_to');
 		$type[$i] = GETPOSTINT($i.'_type');
+		$partial_amount[$i] = price2num(GETPOST($i.'_partial_amount', 'alpha'), 'MT', 2);
 
 		// In transaction mode, fetch amount, type and label from the selected bank transaction
 		if ($transfer_mode == 'transaction') {
@@ -116,6 +117,10 @@ if ($action == 'add' && $user->hasRight('banque', 'transfer')) {
 					}
 					if (empty($dateo[$i])) {
 						$dateo[$i] = $db->jdate($objtr->dateo);
+					}
+					// If a partial amount is specified, use it instead of the full amount
+					if (!empty($partial_amount[$i]) && $partial_amount[$i] > 0 && $partial_amount[$i] <= $amount[$i]) {
+						$amount[$i] = (float) $partial_amount[$i];
 					}
 				}
 				if ($resqltr) {
@@ -329,6 +334,7 @@ print '<script type="text/javascript">
 
 					var dateFrom = $("#tr_filter_date_from").val();
 					var dateTo   = $("#tr_filter_date_to").val();
+					var reference = $("#tr_filter_reference").val();
 
 					$.ajax({
 						url: "ajax/getbanktransactions.php",
@@ -337,13 +343,15 @@ print '<script type="text/javascript">
 							account_id: accountId,
 							token:      $("input[name=\"token\"]").val(),
 							date_from:  dateFrom,
-							date_to:    dateTo
+							date_to:    dateTo,
+							reference:  reference
 						},
 						dataType: "json",
 						success: function(data) {
 							$.each(data, function(idx, t) {
 								var amountStr = "+" + t.amount;
-								var optLabel  = t.date + " | " + t.label + " (" + amountStr + ")";
+								var shortLabel = t.label.length > 40 ? t.label.substring(0, 40) + "..." : t.label;
+								var optLabel  = t.date + " | " + shortLabel + " | " + amountStr;
 								var opt = $("<option></option>")
 									.val(t.id)
 									.attr("data-amount", t.amount)
@@ -379,6 +387,11 @@ print '<script type="text/javascript">
 
 				/* ---- Date filter change triggers reload ---- */
 				$("#tr_filter_date_from, #tr_filter_date_to").on("change", function() {
+					reloadAllTransactions();
+				});
+
+				/* ---- Reference filter change triggers reload ---- */
+				$("#tr_filter_reference").on("input", function() {
 					reloadAllTransactions();
 				});
 
@@ -473,6 +486,8 @@ print '</div>';
 // Date filter bar — visible only in Transaction mode
 print '<div id="tr_date_filter_bar" class="transaction-mode-header" style="display:none; margin-bottom:14px; text-align:center;">';
 print '<span style="font-weight:600; margin-right:10px;">Filtrer les transactions :</span>';
+print '<label style="margin-right:6px;">Référence</label>';
+print '<input type="text" id="tr_filter_reference" class="flat" style="margin-right:14px;">';
 print '<label style="margin-right:6px;">Du</label>';
 print '<input type="date" id="tr_filter_date_from" class="flat" style="margin-right:14px;">';
 print '<label style="margin-right:6px;">Au</label>';
@@ -481,17 +496,71 @@ print '</div>';
 
 print '<div>';
 
-print '<div class="div-table-responsive-no-min">';
-print '<table id="tablemouvbank" class="noborder centpercent">';
+print '<style>
+	#tablemouvbank {
+		width: 100%;
+		border-collapse: collapse;
+		background: white;
+	}
+	#tablemouvbank th {
+		background-color: #f0f0f0;
+		padding: 10px;
+		text-align: left;
+		font-weight: bold;
+		border-bottom: 2px solid #ddd;
+		font-size: 12px;
+		white-space: nowrap;
+	}
+	#tablemouvbank td {
+		padding: 10px;
+		border-bottom: 1px solid #eee;
+		vertical-align: middle;
+	}
+	#tablemouvbank input,
+	#tablemouvbank select {
+		width: 100%;
+		padding: 7px;
+		font-size: 13px;
+		border: 1px solid #bbb;
+		border-radius: 4px;
+		box-sizing: border-box;
+	}
+	#tablemouvbank input:focus,
+	#tablemouvbank select:focus {
+		outline: none;
+		border-color: #4169e1;
+		box-shadow: 0 0 3px rgba(65, 105, 225, 0.4);
+	}
+	#tablemouvbank select {
+		cursor: pointer;
+		background-color: #fafafa;
+	}
+	.div-table-responsive {
+		overflow-x: auto;
+		border: 1px solid #ddd;
+		border-radius: 4px;
+		margin: 10px 0;
+	}
+	#tablemouvbank tr.oddeven {
+		background-color: #fafafa;
+	}
+	#tablemouvbank tr.oddeven:hover {
+		background-color: #f0f5ff;
+	}
+</style>';
+
+print '<div class="div-table-responsive">';
+print '<table id="tablemouvbank" class="noborder">';
 
 print '<tr class="liste_titre">';
-print '<th>'.$langs->trans("TransferFrom").'</th>';
-print '<th class="transaction-mode-header">Transaction</th>';
-print '<th>'.$langs->trans("TransferTo").'</th>';
-print '<th class="type-mode-cell type-mode-header">'.$langs->trans("Type").'</th>';
-print '<th>'.$langs->trans("Date").'</th>';
-print '<th>'.$langs->trans("Description").'</th>';
-print '<th class="right amount-mode-header">'.$langs->trans("Amount").'</th>';
+print '<th style="min-width:100px;">'.$langs->trans("TransferFrom").'</th>';
+print '<th class="transaction-mode-header" style="min-width:150px;">Transaction</th>';
+print '<th style="min-width:100px;">'.$langs->trans("TransferTo").'</th>';
+print '<th class="type-mode-cell type-mode-header" style="min-width:80px;">'.$langs->trans("Type").'</th>';
+print '<th style="min-width:100px;">'.$langs->trans("Date").'</th>';
+print '<th style="min-width:120px;">'.$langs->trans("Description").'</th>';
+print '<th class="right amount-mode-header" style="min-width:90px;">'.$langs->trans("Amount").'</th>';
+print '<th class="right transaction-mode-header" style="min-width:90px; display:none;">'.$langs->trans("Montant partiel").'</th>';
 print '<td class="hideobject multicurrency right">'.$langs->trans("AmountToOthercurrency").'</td>';
 print '</tr>';
 
@@ -566,8 +635,16 @@ for ($i = 1 ; $i < $MAXLINESFORTRANSFERT; $i++) {
 	// Description
 	print '<td><input name="'.$i.'_label" class="flat quatrevingtpercent selectjs" type="text" value="'.dol_escape_htmltag($label).'"></td>';
 
-	// Amount (visible in "Montant" mode only)
-	print '<td class="right amount-mode-cell"><input name="'.$i.'_amount" class="flat right selectjs" type="text" size="6" value="'.dol_escape_htmltag($amount).'"></td>';
+	// Amount (Montant mode) + PartialAmount (Transaction mode)
+	$partialamt = '';
+	if ($error) {
+		$partialamt = GETPOST($i.'_partial_amount', 'alpha');
+	}
+	// Amount (Montant mode only)
+	print '<td class="right amount-mode-cell"><input name="'.$i.'_amount" class="flat selectjs" type="text" value="'.dol_escape_htmltag($amount).'"></td>';
+
+	// PartialAmount (Transaction mode only)
+	print '<td class="right transaction-mode-cell hideobject"><input name="'.$i.'_partial_amount" class="flat" type="text"  value="'.dol_escape_htmltag($partialamt).'"></td>';
 
 	// AmountToOthercurrency (Montant mode only)
 	print '<td class="hideobject multicurrency right"><input name="'.$i.'_amountto" class="flat right" type="text" size="6" value="'.dol_escape_htmltag($amountto).'"></td>';
@@ -578,12 +655,49 @@ for ($i = 1 ; $i < $MAXLINESFORTRANSFERT; $i++) {
 print '</table>';
 print '</div>';
 print '</div>';
-print '<div id="btncont" style="display: flex; align-items: center">';
-print '<a id="btnincrement" style="margin-left:35%" class="btnTitle btnTitlePlus" onclick="increment()" title="'.dol_escape_htmltag($langs->trans("Add")).'">
-		<span class="fa fa-plus-circle valignmiddle btnTitle-icon">
-		</span>
-	   </a>';
-print '<br><div  class=""><input type="submit" class="button" value="'.$langs->trans("Save").'"></div>';
+
+print '<style>
+	#btncont {
+		display: flex;
+		gap: 15px;
+		align-items: center;
+		margin-top: 20px;
+		margin-bottom: 20px;
+	}
+	#btnincrement {
+		padding: 8px 15px !important;
+		border-radius: 4px !important;
+		background-color: #f0f0f0 !important;
+		border: 1px solid #ccc !important;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	#btnincrement:hover {
+		background-color: #e0e0e0 !important;
+		border-color: #bbb !important;
+	}
+	#btncont .button {
+		padding: 10px 30px;
+		background-color: #4169e1;
+		color: white;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		font-weight: bold;
+		font-size: 14px;
+		transition: all 0.2s;
+	}
+	#btncont .button:hover {
+		background-color: #1e3a8a;
+	}
+</style>';
+
+print '<div id="btncont">';
+print '<a id="btnincrement" class="btnTitle btnTitlePlus" onclick="increment()" title="'.dol_escape_htmltag($langs->trans("Add")).'" style="display: inline-flex; align-items: center; gap: 5px;">';
+print '<span class="fa fa-plus-circle valignmiddle btnTitle-icon"></span>';
+print '<span>'.$langs->trans("Add").'</span>';
+print '</a>';
+print '<input type="submit" class="button" value="'.$langs->trans("Save").'">';
 print '</div>';
 
 print '</form>';
