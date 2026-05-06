@@ -111,7 +111,21 @@ function pressing_deliver_bon($db, $bon, $user)
 	$facture->entity = $conf->entity;
 	// Ref will be auto-generated, no need to set it
 
-	// Add article lines to invoice BEFORE creating
+	// Create invoice (MUST be done before adding lines)
+	$idinvoice = $facture->create($user);
+	if ($idinvoice < 0) {
+		$error_msg = "Erreur création facture: " . $facture->error;
+		if (!empty($facture->errors) && is_array($facture->errors)) {
+			$error_msg .= " | " . implode(" | ", $facture->errors);
+		}
+		dol_syslog($error_msg, LOG_ERR);
+		// Store error in global for later retrieval
+		$GLOBALS['pressing_last_error'] = $error_msg;
+		$db->rollback();
+		return -1;
+	}
+
+	// Add article lines to invoice
 	foreach ($articles as $art) {
 		$desc = "Article Pressing: " . $art->ref_article;
 		if (!empty($art->longueur) && !empty($art->largeur)) {
@@ -128,20 +142,6 @@ function pressing_deliver_bon($db, $bon, $user)
 			$db->rollback();
 			return -1;
 		}
-	}
-
-	// Create invoice (NOT validate first)
-	$idinvoice = $facture->create($user);
-	if ($idinvoice < 0) {
-		$error_msg = "Erreur création facture: " . $facture->error;
-		if (!empty($facture->errors) && is_array($facture->errors)) {
-			$error_msg .= " | " . implode(" | ", $facture->errors);
-		}
-		dol_syslog($error_msg, LOG_ERR);
-		// Store error in global for later retrieval
-		$GLOBALS['pressing_last_error'] = $error_msg;
-		$db->rollback();
-		return -1;
 	}
 
 	// Validate the invoice so it can be paid

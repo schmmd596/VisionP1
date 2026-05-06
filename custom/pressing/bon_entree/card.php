@@ -126,7 +126,7 @@ if ($action == 'process_payment' && $user->rights->pressing->write && $id > 0) {
 				$paiement = new Paiement($db);
 				$paiement->datepaye = dol_now();
 				$paiement->amounts = array($idinvoice => $payment_amount);
-				$paiement->paiementid = GETPOSTINT('fk_paiement') ? GETPOSTINT('fk_paiement') : 4; // Default to Cash if not provided
+				$paiement->paiementid = 4; // Default to Cash
 				$paiement->num_paiement = '';
 				
 				$paiement_id = $paiement->create($user);
@@ -626,11 +626,6 @@ if (!$id) {
 	
 	print '					<input type="number" id="payment_amount" name="payment_amount" step="0.01" min="0" value="' . number_format($total_amount, 2, '.', '') . '" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
 					</div>
-
-					<div class="payment-form-group">
-						<label for="fk_paiement"><strong>Mode de Paiement</strong></label>';
-	$form->select_types_paiements('', 'fk_paiement', '', 2); // 2 means generic payment modes
-	print '				</div>
 
 					<div class="payment-form-group">
 						<label for="fk_bank_account"><strong>Compte Bancaire</strong></label>';
