@@ -18,7 +18,7 @@ print '<div class="pressing-header">';
 print '<h1><i class="fas fa-cubes"></i> Liste de tous les Articles</h1>';
 print '</div>';
 
-$sql = "SELECT pa.rowid, pa.ref_article, pa.fk_bon_entree, pa.longueur, pa.largeur, pa.surface, pa.price, pa.status,";
+$sql = "SELECT pa.rowid, pa.ref_article, pa.fk_bon_entree, pa.qty, pa.price, pa.status,";
 $sql .= " pb.ref as bon_ref FROM " . MAIN_DB_PREFIX . "pressing_article pa";
 $sql .= " LEFT JOIN " . MAIN_DB_PREFIX . "pressing_bon_entree pb ON pb.rowid = pa.fk_bon_entree";
 $sql .= " ORDER BY pa.rowid DESC LIMIT 100";
@@ -29,9 +29,8 @@ if ($resql) {
 	print '<thead><tr>';
 	print '<th><i class="fas fa-barcode"></i> Réf</th>';
 	print '<th><i class="fas fa-inbox"></i> Bon Entrée</th>';
-	print '<th><i class="fas fa-ruler"></i> Dimensions</th>';
-	print '<th><i class="fas fa-expand"></i> Surface (m²)</th>';
-	print '<th><i class="fas fa-euro-sign"></i> Prix</th>';
+	print '<th><i class="fas fa-box"></i> Qté</th>';
+	print '<th><i class="fas fa-coins"></i> Prix unitaire</th>';
 	print '<th><i class="fas fa-circle"></i> Statut</th>';
 	print '<th><i class="fas fa-cog"></i> Actions</th>';
 	print '</tr></thead><tbody>';
@@ -41,9 +40,8 @@ if ($resql) {
 		print '<tr>';
 		print '<td><strong>' . $obj->ref_article . '</strong></td>';
 		print '<td><a href="' . DOL_URL_ROOT . '/custom/pressing/bon_entree/card.php?id='.$obj->fk_bon_entree.'">' . $obj->bon_ref . '</a></td>';
-		print '<td>' . (empty($obj->longueur) ? '-' : ($obj->longueur . ' x ' . $obj->largeur . ' cm')) . '</td>';
-		print '<td>' . (empty($obj->surface) ? '-' : number_format($obj->surface, 4) . ' m²') . '</td>';
-		print '<td><strong>' . number_format($obj->price, 2) . ' €</strong></td>';
+		print '<td>' . $obj->qty . '</td>';
+		print '<td><strong>' . price($obj->price) . '</strong></td>';
 		print '<td>';
 		$status_class = '';
 		if ($obj->status == 0) {

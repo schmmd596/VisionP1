@@ -1,0 +1,3 @@
+-- Migration: Add payment columns to llx_pressing_bon_entree
+-- These columns may already exist if table was created with IF NOT EXISTS
+-- ALTER statements are safe to run even if columns exist (they'll be skipped)

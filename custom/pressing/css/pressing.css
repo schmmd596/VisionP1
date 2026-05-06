@@ -134,6 +134,34 @@
 	color: var(--primary-color);
 }
 
+/* Icons for sidebar category labels/headers */
+#leftmenu li:has(> a[href*="bon_entree"])::before {
+	content: "\f07b";
+	font-family: "Font Awesome 6 Free", serif;
+	font-weight: 900;
+	margin-right: 10px;
+	font-size: 16px;
+	color: var(--primary-color);
+}
+
+#leftmenu li:has(> a[href*="article"])::before {
+	content: "\f1cd";
+	font-family: "Font Awesome 6 Free", serif;
+	font-weight: 900;
+	margin-right: 10px;
+	font-size: 16px;
+	color: var(--primary-color);
+}
+
+#leftmenu li:has(> a[href*="entrepot"])::before {
+	content: "\f1ad";
+	font-family: "Font Awesome 6 Free", serif;
+	font-weight: 900;
+	margin-right: 10px;
+	font-size: 16px;
+	color: var(--primary-color);
+}
+
 /* Pressing menu label styling */
 #leftmenu .pressing-menu-label {
 	font-weight: 700;

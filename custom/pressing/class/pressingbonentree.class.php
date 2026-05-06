@@ -32,6 +32,10 @@ class PressingBonEntree extends CommonObject
 	public $fk_user_author;
 	public $fk_user_valid;
 	public $note_private;
+	public $payment_status;
+	public $payment_amount;
+	public $fk_bank_account;
+	public $date_payment;
 
 	/**
 	 *  Constructor
@@ -124,6 +128,10 @@ class PressingBonEntree extends CommonObject
 				$this->fk_user_author = $obj->fk_user_author;
 				$this->fk_user_valid = $obj->fk_user_valid;
 				$this->note_private = $obj->note_private;
+				$this->payment_status = $obj->payment_status ?? 0;
+				$this->payment_amount = $obj->payment_amount ?? 0;
+				$this->fk_bank_account = $obj->fk_bank_account ?? null;
+				$this->date_payment = $this->db->jdate($obj->date_payment ?? null);
 
 				return 1;
 			}
@@ -150,6 +158,10 @@ class PressingBonEntree extends CommonObject
 		$sql .= "fk_soc = " . (int) $this->fk_soc . ", ";
 		$sql .= "date_entree = " . (empty($this->date_entree) ? "NULL" : "'" . $this->db->idate($this->date_entree) . "'") . ", ";
 		$sql .= "status = " . (int) $this->status . ", ";
+		$sql .= "payment_status = " . (int) ($this->payment_status ?? 0) . ", ";
+		$sql .= "payment_amount = " . (float) ($this->payment_amount ?? 0) . ", ";
+		$sql .= "fk_bank_account = " . (empty($this->fk_bank_account) ? "NULL" : (int) $this->fk_bank_account) . ", ";
+		$sql .= "date_payment = " . (empty($this->date_payment) ? "NULL" : "'" . $this->db->idate($this->date_payment) . "'") . ", ";
 		$sql .= "note_private = '" . $this->db->escape($this->note_private) . "'";
 		$sql .= " WHERE rowid = " . ((int) $this->id);
 

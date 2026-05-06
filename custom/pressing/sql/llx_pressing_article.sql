@@ -1,9 +1,10 @@
-CREATE TABLE llx_pressing_article (
+CREATE TABLE IF NOT EXISTS llx_pressing_article (
   rowid integer AUTO_INCREMENT PRIMARY KEY,
-  fk_facture integer NOT NULL,
+  fk_bon_entree integer,
   fk_product integer NOT NULL,
   ref_article varchar(255) NOT NULL,
   fk_entrepot integer,
+  qty integer DEFAULT 1,
   longueur double,
   largeur double,
   surface double,

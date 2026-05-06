@@ -74,21 +74,15 @@ class modPressing extends DolibarrModules
 		$r++;
 
 		// Left Menus - Bons d'Entrée
-		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'Bons d\'Entrée', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_bon_entree', 'url'=>'/custom/pressing/bon_entree/list.php', 'langs'=>'pressing@pressing', 'position'=>10, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
-		$r++;
-
-		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'Nouveau Bon', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_bon_entree', 'url'=>'/custom/pressing/bon_entree/card.php?action=create', 'langs'=>'pressing@pressing', 'position'=>15, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
+		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'<i class="fas fa-folder"></i> Bons d\'Entrée', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_bon_entree', 'url'=>'/custom/pressing/bon_entree/list.php', 'langs'=>'pressing@pressing', 'position'=>10, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
 		$r++;
 
 		// Left Menus - Articles
-		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'Articles', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_articles', 'url'=>'/custom/pressing/article/list.php', 'langs'=>'pressing@pressing', 'position'=>20, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
+		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'<i class="fas fa-shopping-bag"></i> Articles', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_articles', 'url'=>'/custom/pressing/article/list.php', 'langs'=>'pressing@pressing', 'position'=>20, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
 		$r++;
 
 		// Left Menus - Entrepôts
-		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'Liste Entrepôts', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_warehouse_list', 'url'=>'/custom/pressing/entrepot/list.php', 'langs'=>'pressing@pressing', 'position'=>30, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
-		$r++;
-
-		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'Vue par Entrepôt', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_warehouse', 'url'=>'/custom/pressing/entrepot/view.php', 'langs'=>'pressing@pressing', 'position'=>35, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
+		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'<i class="fas fa-building"></i> Liste Entrepôts', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_warehouse_list', 'url'=>'/custom/pressing/entrepot/list.php', 'langs'=>'pressing@pressing', 'position'=>30, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
 		$r++;
 
 		// Permissions
@@ -138,6 +132,29 @@ class modPressing extends DolibarrModules
 	public function init($options = '')
 	{
 		$sql = array();
+
+		// Load SQL files for table creation and indexes
+		// All files use IF NOT EXISTS / IF NOT EXISTS syntax to avoid errors
+		$sqlfiles = array(
+			'/custom/pressing/sql/llx_pressing_bon_entree.sql',
+			'/custom/pressing/sql/llx_pressing_bon_entree.key.sql',
+			'/custom/pressing/sql/llx_pressing_article.sql',
+			'/custom/pressing/sql/llx_pressing_article.key.sql'
+		);
+
+		foreach ($sqlfiles as $sqlfile) {
+			if (file_exists(DOL_DOCUMENT_ROOT . $sqlfile)) {
+				$content = file_get_contents(DOL_DOCUMENT_ROOT . $sqlfile);
+				// Filter out empty statements and comments
+				$statements = array_filter(
+					array_map('trim', explode(';', str_replace("\n", ' ', $content))),
+					function($stmt) {
+						return !empty($stmt) && !preg_match('/^--/', trim($stmt));
+					}
+				);
+				$sql = array_merge($sql, $statements);
+			}
+		}
 
 		return $this->_init($sql, $options);
 	}

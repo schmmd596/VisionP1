@@ -28,14 +28,19 @@ function pressing_admin_prepare_head()
  * @param DoliDB          $db       Database handler
  * @param PressingArticle $article  Pressing article object
  * @param User            $user     User object
+ * @param int             $qty      Quantity to add (default: from article->qty)
  * @return int                      1 if OK, <0 if KO
  */
-function pressing_reception_article($db, $article, $user)
+function pressing_reception_article($db, $article, $user, $qty = null)
 {
 	require_once DOL_DOCUMENT_ROOT . '/product/stock/class/mouvementstock.class.php';
 
 	if (empty($article->fk_entrepot) || empty($article->fk_product)) {
 		return 0;
+	}
+
+	if (is_null($qty)) {
+		$qty = (empty($article->qty) ? 1 : $article->qty);
 	}
 
 	$db->begin();
@@ -46,7 +51,7 @@ function pressing_reception_article($db, $article, $user)
 	$mouvstock->label = "Réception pressing - " . $article->ref_article;
 
 	// Type 3 = Stock increase (real entry)
-	$result = $mouvstock->_create($user, $article->fk_product, $article->fk_entrepot, 1, 3, 0, $mouvstock->label);
+	$result = $mouvstock->_create($user, $article->fk_product, $article->fk_entrepot, $qty, 3, 0, $mouvstock->label);
 
 	if ($result < 0) {
 		$db->rollback();
@@ -74,35 +79,74 @@ function pressing_deliver_bon($db, $bon, $user)
 
 	$db->begin();
 
-	// Get all articles
-	$articles = $bon->getArticles();
-
-	// Create invoice
-	$facture = new Facture($db);
-	$facture->fk_soc = $bon->fk_soc;
-	$facture->date_valid = dol_now();
-	$facture->fk_user_author = $user->id;
-
-	// Add article lines to invoice
-	foreach ($articles as $art) {
-		$desc = "Article Pressing: " . $art->ref_article;
-		if ($art->longueur > 0 && $art->largeur > 0) {
-			$desc .= " (" . $art->longueur . "x" . $art->largeur . " cm, " . number_format($art->surface, 4) . " m²)";
-		}
-
-		$facture->addline($desc, $art->price, 1, 0, 0, 0, $art->fk_product, 0, '', '', 0, 0, '', 'HT');
-	}
-
-	// Create and validate invoice
-	$idinvoice = $facture->create($user);
-	if ($idinvoice < 0) {
+	// Check if bon has a client
+	if (empty($bon->fk_soc)) {
+		dol_syslog("Erreur: Le bon d'entrée " . $bon->id . " n'a pas de client", LOG_ERR);
 		$db->rollback();
 		return -1;
 	}
 
-	// Validate invoice
-	$facture->fetch($idinvoice);
-	$facture->validate($user);
+	// Get all articles
+	$articles = $bon->getArticles();
+
+	if (empty($articles)) {
+		dol_syslog("Erreur: Aucun article dans le bon d'entrée " . $bon->id, LOG_ERR);
+		$db->rollback();
+		return -1;
+	}
+
+	// Check if user has permission to create invoices
+	if (empty($user->rights->facture->creer)) {
+		dol_syslog("Erreur: Utilisateur " . $user->login . " n'a pas la permission de créer des factures", LOG_ERR);
+		$db->rollback();
+		return -1;
+	}
+
+	// Create invoice
+	$facture = new Facture($db);
+	$facture->socid = $bon->fk_soc;
+	$facture->type = Facture::TYPE_STANDARD; // Standard invoice
+	$facture->date = dol_now();
+	$facture->fk_user_author = $user->id;
+	$facture->entity = $conf->entity;
+	// Ref will be auto-generated, no need to set it
+
+	// Add article lines to invoice BEFORE creating
+	foreach ($articles as $art) {
+		$desc = "Article Pressing: " . $art->ref_article;
+		if (!empty($art->longueur) && !empty($art->largeur)) {
+			$desc .= " (" . $art->longueur . "x" . $art->largeur . " cm, " . number_format($art->surface, 4) . " m²)";
+		}
+
+		$qty = (empty($art->qty) ? 1 : $art->qty);
+		$price_unit = (empty($art->price) ? 0 : $art->price);
+
+		// Parameters: desc, pu_ht, qty, txtva, txlocaltax1, txlocaltax2, fk_product, remise_percent, date_start, date_end, fk_code_ventilation, info_bits, fk_remise_except, price_base_type
+		$result = $facture->addline($desc, $price_unit, $qty, 0, 0, 0, $art->fk_product, 0, '', '', 0, 0, 0, 'HT');
+		if ($result < 0) {
+			dol_syslog("Erreur addline: " . $facture->error, LOG_ERR);
+			$db->rollback();
+			return -1;
+		}
+	}
+
+	// Create invoice (NOT validate)
+	$idinvoice = $facture->create($user);
+	if ($idinvoice < 0) {
+		$error_msg = "Erreur création facture: " . $facture->error;
+		if (!empty($facture->errors) && is_array($facture->errors)) {
+			$error_msg .= " | " . implode(" | ", $facture->errors);
+		}
+		dol_syslog($error_msg, LOG_ERR);
+		// Store error in global for later retrieval
+		$GLOBALS['pressing_last_error'] = $error_msg;
+		$db->rollback();
+		return -1;
+	}
+
+	// Note: We don't validate the invoice here - it will be created as draft
+	// and can be validated manually by the user. This avoids numbering and validation errors.
+	// The invoice must exist before we can update article records.
 
 	// Create stock movements and update articles
 	foreach ($articles as $art) {
@@ -123,8 +167,9 @@ function pressing_deliver_bon($db, $bon, $user)
 			$mouvstock->fk_entrepot = $art->fk_entrepot;
 			$mouvstock->label = "Livraison pressing - " . $art->ref_article;
 
+			$qty = (empty($art->qty) ? 1 : $art->qty);
 			// Type 2 = Stock decrease (real exit)
-			$result = $mouvstock->_create($user, $art->fk_product, $art->fk_entrepot, -1, 2, 0, $mouvstock->label);
+			$result = $mouvstock->_create($user, $art->fk_product, $art->fk_entrepot, -$qty, 2, 0, $mouvstock->label);
 
 			if ($result < 0) {
 				$db->rollback();

@@ -9,6 +9,7 @@ require '../../../main.inc.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/html.formproduct.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
+require_once DOL_DOCUMENT_ROOT.'/product/stock/class/entrepot.class.php';
 require_once '../class/pressingarticle.class.php';
 
 $langs->load("pressing@pressing");
@@ -27,13 +28,12 @@ if ($id > 0) {
 if ($action == 'update' && $user->rights->pressing->write) {
 	$object->fk_entrepot = GETPOSTINT('fk_entrepot');
 	$object->status = GETPOSTINT('status');
-	$object->longueur = floatval(GETPOST('longueur', 'float'));
-	$object->largeur = floatval(GETPOST('largeur', 'float'));
-	$object->price = floatval(GETPOST('price', 'float'));
+	$object->qty = GETPOSTINT('qty');
+	$object->price = price2num(GETPOST('price'), 'MU');
 	$object->note_private = GETPOST('note_private', 'alpha');
 
-	if ($object->longueur > 0 && $object->largeur > 0) {
-		$object->surface = $object->calculateSurface($object->longueur, $object->largeur);
+	if (empty($object->qty)) {
+		$object->qty = 1;
 	}
 
 	$res = $object->update($user);
@@ -78,26 +78,23 @@ if ($object->fk_product > 0) {
 
 // Entrepôt
 print '<tr><td>Entrepôt</td><td>';
-$formproduct->selectWarehouses($object->fk_entrepot, 'fk_entrepot', '', 1);
+$ent_obj = new Entrepot($db);
+$warehouses = $ent_obj->list_array();
+if (is_array($warehouses) && !empty($warehouses)) {
+	print $form->selectarray('fk_entrepot', $warehouses, $object->fk_entrepot, 0, 0);
+} else {
+	print '<span class="error">Aucun entrepôt disponible</span>';
+}
 print '</td></tr>';
 
-// Dimensions
-print '<tr><td>Longueur (cm)</td><td>';
-print '<input type="number" name="longueur" id="longueur" value="'.$object->longueur.'" step="0.1" min="0">';
-print '</td></tr>';
-
-print '<tr><td>Largeur (cm)</td><td>';
-print '<input type="number" name="largeur" id="largeur" value="'.$object->largeur.'" step="0.1" min="0">';
-print '</td></tr>';
-
-// Surface
-print '<tr><td>Surface (m²)</td><td>';
-print '<span id="surface_display">' . ($object->surface ? number_format($object->surface, 4) : '-') . '</span> m²';
+// Quantité
+print '<tr><td>Quantité</td><td>';
+print '<input type="number" name="qty" value="' . $object->qty . '" min="1" step="1">';
 print '</td></tr>';
 
 // Prix
-print '<tr><td>Prix (€)</td><td>';
-print '<input type="number" name="price" id="price" value="' . number_format($object->price, 2) . '" step="0.01" min="0">';
+print '<tr><td>Prix unitaire</td><td>';
+print '<input type="number" name="price" id="price" value="' . $object->price . '" step="0.01" min="0" required>';
 print '</td></tr>';
 
 // Statut
@@ -124,19 +121,6 @@ print '<input type="submit" class="button" value="'.$langs->trans("Save").'">';
 print '</div>';
 
 print '</form>';
-
-// JavaScript for surface display
-print '<script type="text/javascript">
-document.getElementById("longueur").addEventListener("input", updateSurface);
-document.getElementById("largeur").addEventListener("input", updateSurface);
-
-function updateSurface() {
-	const l = parseFloat(document.getElementById("longueur").value) || 0;
-	const lg = parseFloat(document.getElementById("largeur").value) || 0;
-	const surface = (l > 0 && lg > 0) ? ((l * lg) / 10000).toFixed(4) : "-";
-	document.getElementById("surface_display").textContent = surface;
-}
-</script>';
 
 llxFooter();
 $db->close();

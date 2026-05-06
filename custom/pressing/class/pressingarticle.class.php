@@ -28,6 +28,7 @@ class PressingArticle extends CommonObject
 	public $fk_product;
 	public $ref_article;
 	public $fk_entrepot;
+	public $qty;
 	public $longueur;
 	public $largeur;
 	public $surface;
@@ -66,13 +67,14 @@ class PressingArticle extends CommonObject
 		}
 
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . $this->table_element . " (";
-		$sql .= "fk_bon_entree, fk_facture, fk_product, ref_article, fk_entrepot, longueur, largeur, surface, price, status, date_reception, note_private";
+		$sql .= "fk_bon_entree, fk_facture, fk_product, ref_article, fk_entrepot, qty, longueur, largeur, surface, price, status, date_reception, note_private";
 		$sql .= ") VALUES (";
 		$sql .= (empty($this->fk_bon_entree) ? "NULL" : (int) $this->fk_bon_entree) . ", ";
 		$sql .= (empty($this->fk_facture) ? "NULL" : (int) $this->fk_facture) . ", ";
 		$sql .= (int) $this->fk_product . ", ";
 		$sql .= "'" . $this->db->escape($this->ref_article) . "', ";
 		$sql .= (empty($this->fk_entrepot) ? "NULL" : (int) $this->fk_entrepot) . ", ";
+		$sql .= (empty($this->qty) ? 1 : (int) $this->qty) . ", ";
 		$sql .= (empty($this->longueur) ? "NULL" : (double) $this->longueur) . ", ";
 		$sql .= (empty($this->largeur) ? "NULL" : (double) $this->largeur) . ", ";
 		$sql .= (empty($this->surface) ? "NULL" : (double) $this->surface) . ", ";
@@ -125,6 +127,7 @@ class PressingArticle extends CommonObject
 				$this->fk_product = $obj->fk_product;
 				$this->ref_article = $obj->ref_article;
 				$this->fk_entrepot = $obj->fk_entrepot;
+				$this->qty = $obj->qty;
 				$this->longueur = $obj->longueur;
 				$this->largeur = $obj->largeur;
 				$this->surface = $obj->surface;
@@ -160,6 +163,7 @@ class PressingArticle extends CommonObject
 		$sql .= "fk_product = " . (int) $this->fk_product . ", ";
 		$sql .= "ref_article = '" . $this->db->escape($this->ref_article) . "', ";
 		$sql .= "fk_entrepot = " . (empty($this->fk_entrepot) ? "NULL" : (int) $this->fk_entrepot) . ", ";
+		$sql .= "qty = " . (empty($this->qty) ? 1 : (int) $this->qty) . ", ";
 		$sql .= "longueur = " . (empty($this->longueur) ? "NULL" : (double) $this->longueur) . ", ";
 		$sql .= "largeur = " . (empty($this->largeur) ? "NULL" : (double) $this->largeur) . ", ";
 		$sql .= "surface = " . (empty($this->surface) ? "NULL" : (double) $this->surface) . ", ";

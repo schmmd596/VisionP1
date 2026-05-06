@@ -1,16 +1,18 @@
 <?php
 /**
- *	\file       custom/pressing/bon_entree/card.php
+ *	\file       custom/pressing/bon_entree/card_new.php
  *	\ingroup    pressing
- *	\brief      Card for pressing reception order
+ *	\brief      Card for pressing reception order (improved design)
  */
 
 require '../../../main.inc.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.form.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/html.formproduct.class.php';
 require_once DOL_DOCUMENT_ROOT.'/societe/class/client.class.php';
+require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/stock/class/entrepot.class.php';
+require_once DOL_DOCUMENT_ROOT.'/compta/bank/class/account.class.php';
 require_once '../class/pressingbonentree.class.php';
 require_once '../class/pressingarticle.class.php';
 require_once '../lib/pressing.lib.php';
@@ -18,6 +20,7 @@ require_once '../lib/pressing.lib.php';
 $langs->load("pressing@pressing");
 $langs->load("bills");
 $langs->load("companies");
+$langs->load("banks");
 
 $id = GETPOSTINT('id');
 $action = GETPOST('action', 'aZ09');
@@ -33,7 +36,6 @@ if ($id > 0) {
 if ($action == 'create' && $_SERVER['REQUEST_METHOD'] == 'POST' && $user->rights->pressing->write) {
 	$bon->fk_soc = GETPOSTINT('fk_soc');
 
-	// Check that a client is selected
 	if (empty($bon->fk_soc)) {
 		setEventMessages('Veuillez sélectionner un client', null, 'errors');
 	} else {
@@ -51,50 +53,117 @@ if ($action == 'create' && $_SERVER['REQUEST_METHOD'] == 'POST' && $user->rights
 	setEventMessages('Vous n\'avez pas les permissions pour créer un bon', null, 'errors');
 }
 
+// Add article
 if ($action == 'add_article' && $user->rights->pressing->write && $id > 0) {
 	$article = new PressingArticle($db);
 	$article->fk_bon_entree = $id;
 	$article->fk_product = GETPOSTINT('fk_product');
 	$article->ref_article = GETPOST('ref_article', 'alpha');
 	$article->fk_entrepot = GETPOSTINT('fk_entrepot');
-	$article->longueur = GETPOST('longueur', 'float');
-	$article->largeur = GETPOST('largeur', 'float');
-	$article->price = GETPOST('price', 'float');
-
-	if ($article->longueur > 0 && $article->largeur > 0) {
-		$article->surface = $article->calculateSurface($article->longueur, $article->largeur);
+	$article->qty = GETPOSTINT('qty');
+	if (empty($article->qty)) {
+		$article->qty = 1;
 	}
+	$article->price = price2num(GETPOST('price'), 'MU');
 
-	if (empty($article->price) && $article->fk_product > 0 && $article->surface > 0) {
-		$prod = new Product($db);
-		$prod->fetch($article->fk_product);
-		$article->price = round($article->surface * $prod->price, 2);
-	}
-
-	$res = $article->create($user);
-	if ($res > 0) {
-		// Create stock movement (reception)
-		pressing_reception_article($db, $article, $user);
-		setEventMessages('Article ajouté', null, 'mesgs');
-		header("Location: ".$_SERVER["PHP_SELF"]."?id=".$id);
-		exit;
+	if (empty($article->price) || $article->price <= 0) {
+		setEventMessages('Le prix est requis et doit être supérieur à 0', null, 'errors');
+	} elseif (empty($article->fk_entrepot)) {
+		setEventMessages('L\'entrepôt est requis', null, 'errors');
 	} else {
-		setEventMessages($article->error, null, 'errors');
+		$res = $article->create($user);
+		if ($res > 0) {
+			pressing_reception_article($db, $article, $user, $article->qty);
+			setEventMessages('Article ajouté avec succès', null, 'mesgs');
+			header("Location: ".$_SERVER["PHP_SELF"]."?id=".$id);
+			exit;
+		} else {
+			setEventMessages('Erreur lors de l\'ajout de l\'article: ' . $article->error, null, 'errors');
+		}
+	}
+}
+
+// Change article status
+if ($action == 'change_status' && $user->rights->pressing->write) {
+	$article_id = GETPOSTINT('article_id');
+	$new_status = GETPOSTINT('new_status');
+
+	if ($article_id > 0 && $new_status >= 0 && $new_status <= 3) {
+		$article = new PressingArticle($db);
+		if ($article->fetch($article_id) > 0) {
+			// Only allow increasing status (0→1→2 and stop at 2)
+			if ($new_status > $article->status && $new_status <= 2) {
+				$article->status = $new_status;
+				if ($article->update($user) > 0) {
+					setEventMessages('Statut de l\'article mis à jour', null, 'mesgs');
+				} else {
+					setEventMessages('Erreur lors de la mise à jour du statut', null, 'errors');
+				}
+			}
+		}
+	}
+	header("Location: ".$_SERVER["PHP_SELF"]."?id=".$id);
+	exit;
+}
+
+// Process payment (Phase 2)
+if ($action == 'process_payment' && $user->rights->pressing->write && $id > 0) {
+	$payment_type = GETPOST('payment_type', 'aZ09'); // 'paid' or 'unpaid'
+	$payment_amount = price2num(GETPOST('payment_amount'), 'MU');
+	$fk_bank_account = GETPOSTINT('fk_bank_account');
+
+	if ($payment_type == 'paid' && ($payment_amount <= 0 || empty($fk_bank_account))) {
+		setEventMessages('Veuillez entrer un montant valide et sélectionner un compte bancaire', null, 'errors');
+	} else {
+		// Deliver the bon
+		$result = pressing_deliver_bon($db, $bon, $user);
+		if ($result >= 0) {
+			// Handle payment if paid
+			if ($payment_type == 'paid') {
+				require_once DOL_DOCUMENT_ROOT . '/compta/bank/class/account.class.php';
+				$bank = new Account($db);
+				$bank->fetch($fk_bank_account);
+
+				// Create payment record (simple logging for now)
+				$bon->payment_status = 1; // 1 = paid
+				$bon->payment_amount = $payment_amount;
+				$bon->fk_bank_account = $fk_bank_account;
+				$bon->date_payment = dol_now();
+			} else {
+				$bon->payment_status = 0; // 0 = unpaid
+			}
+
+			if ($bon->update($user) >= 0) {
+				setEventMessages('Bon livré avec succès! Une facture a été créée en brouillon.', null, 'mesgs');
+				$bon->fetch($id);
+			} else {
+				setEventMessages('Bon livré mais erreur lors de la sauvegarde du paiement', null, 'warnings');
+				$bon->fetch($id);
+			}
+		} else {
+			$error_msg = 'Erreur lors de la livraison';
+			if ($result == -1) {
+				$error_msg = 'Erreur lors de la création de la facture';
+				if (!empty($GLOBALS['pressing_last_error'])) {
+					$error_msg .= ': ' . $GLOBALS['pressing_last_error'];
+				}
+			}
+			setEventMessages($error_msg, null, 'errors');
+		}
 	}
 }
 
 // Deliver action
 if ($action == 'deliver' && $user->rights->pressing->deliver && $id > 0) {
-	if ($bon->canDeliver()) {
-		$result = pressing_deliver_bon($db, $bon, $user);
-		if ($result >= 0) {
-			setEventMessages('Bon livré avec succès', null, 'mesgs');
-			$bon->fetch($id);
-		} else {
-			setEventMessages('Erreur lors de la livraison', null, 'errors');
-		}
+	if (!$bon->canDeliver()) {
+		setEventMessages('Tous les articles ne sont pas au statut "Prêt à livrer". Veuillez mettre à jour les statuts des articles.', null, 'errors');
+	} elseif (empty($bon->fk_soc)) {
+		setEventMessages('Erreur: Aucun client assigné au bon d\'entrée.', null, 'errors');
+	} elseif (!$user->rights->facture->creer) {
+		setEventMessages('Erreur: Vous n\'avez pas les permissions nécessaires pour créer des factures.', null, 'errors');
 	} else {
-		setEventMessages('Tous les articles ne sont pas prêts à livrer', null, 'errors');
+		// Show payment dialog instead of directly delivering
+		// Payment dialog will be shown in the view section
 	}
 }
 
@@ -104,18 +173,16 @@ if ($action == 'delete' && $user->rights->pressing->delete && $id > 0) {
 
 	$db->begin();
 
-	// Get all articles
 	$articles = $bon->getArticles();
 
-	// Delete stock movements for each article (reverse reception)
 	foreach ($articles as $art) {
 		if ($art->fk_entrepot > 0 && $art->fk_product > 0) {
 			$mouvstock = new MouvementStock($db);
 			$mouvstock->fk_product = $art->fk_product;
 			$mouvstock->fk_entrepot = $art->fk_entrepot;
 			$mouvstock->label = "Suppression pressing - " . $art->ref_article;
-			// Type 3 = Stock increase reverse (return)
-			$result = $mouvstock->_create($user, $art->fk_product, $art->fk_entrepot, -1, 3, 0, $mouvstock->label);
+			$qty = (empty($art->qty) ? 1 : $art->qty);
+			$result = $mouvstock->_create($user, $art->fk_product, $art->fk_entrepot, -$qty, 3, 0, $mouvstock->label);
 			if ($result < 0) {
 				$db->rollback();
 				setEventMessages('Erreur lors de la suppression des mouvements de stock', null, 'errors');
@@ -125,7 +192,6 @@ if ($action == 'delete' && $user->rights->pressing->delete && $id > 0) {
 		}
 	}
 
-	// Delete all articles
 	foreach ($articles as $art) {
 		$sql = "DELETE FROM " . MAIN_DB_PREFIX . "pressing_article WHERE rowid = " . (int) $art->id;
 		$resql = $db->query($sql);
@@ -137,7 +203,6 @@ if ($action == 'delete' && $user->rights->pressing->delete && $id > 0) {
 		}
 	}
 
-	// Delete bon
 	$sql = "DELETE FROM " . MAIN_DB_PREFIX . "pressing_bon_entree WHERE rowid = " . (int) $id;
 	$resql = $db->query($sql);
 	if ($resql) {
@@ -158,20 +223,300 @@ $stats = $bon->getArticleStats();
 // View
 llxHeader('', 'Bon d\'Entrée Pressing');
 
+// Include pressing stylesheet
+require_once '../includes/header.php';
+
 $form = new Form($db);
 $formproduct = new FormProduct($db);
 
+// Add CSS for better design
+print '<style>
+.pressing-creation-card {
+	background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+	color: white;
+	border-radius: 12px;
+	padding: 40px;
+	margin-bottom: 30px;
+	box-shadow: 0 8px 25px rgba(40,167,69,0.2);
+	min-height: 300px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	text-align: center;
+}
+
+.pressing-creation-card h2 {
+	font-size: 28px;
+	margin-bottom: 20px;
+	color: white;
+}
+
+.pressing-creation-card .form-group {
+	width: 100%;
+	max-width: 400px;
+	margin-bottom: 20px;
+}
+
+.pressing-creation-card label {
+	display: block;
+	text-align: left;
+	margin-bottom: 10px;
+	font-weight: 600;
+}
+
+.pressing-creation-card select {
+	width: 100%;
+	padding: 12px;
+	border: none;
+	border-radius: 6px;
+	font-size: 16px;
+}
+
+.pressing-creation-card .button {
+	background-color: white;
+	color: #28a745;
+	border: none;
+	padding: 14px 40px;
+	font-size: 16px;
+	font-weight: 700;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.3s ease;
+	min-width: 200px;
+}
+
+.pressing-creation-card .button:hover {
+	transform: translateY(-3px);
+	box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+
+.status-buttons {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.status-btn {
+	padding: 8px 14px;
+	border: none;
+	border-radius: 5px;
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 600;
+	transition: all 0.2s ease;
+}
+
+.status-btn-next {
+	background-color: #28a745;
+	color: white;
+}
+
+.status-btn-next:hover {
+	background-color: #218838;
+}
+
+.status-btn-disabled {
+	background-color: #ccc;
+	color: #666;
+	cursor: not-allowed;
+}
+
+.article-status-0 { background-color: #fff3cd; color: #856404; padding: 6px 12px; border-radius: 20px; font-weight: 600; }
+.article-status-1 { background-color: #cfe2ff; color: #084298; padding: 6px 12px; border-radius: 20px; font-weight: 600; }
+.article-status-2 { background-color: #d1e7dd; color: #0f5132; padding: 6px 12px; border-radius: 20px; font-weight: 600; }
+.article-status-3 { background-color: #d3d3d3; color: #383d41; padding: 6px 12px; border-radius: 20px; font-weight: 600; }
+
+.payment-modal {
+	position: fixed;
+	z-index: 1000;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0,0,0,0.4);
+}
+
+.payment-modal-content {
+	background-color: white;
+	margin: 10% auto;
+	padding: 0;
+	border: 1px solid #888;
+	border-radius: 12px;
+	width: 90%;
+	max-width: 500px;
+	box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+.payment-modal-header {
+	padding: 20px;
+	background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+	color: white;
+	border-radius: 12px 12px 0 0;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.payment-modal-header h2 {
+	margin: 0;
+	font-size: 20px;
+}
+
+.payment-modal-close {
+	font-size: 28px;
+	font-weight: bold;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.payment-modal-close:hover {
+	transform: scale(1.2);
+}
+
+.payment-modal form {
+	padding: 20px;
+}
+
+.payment-form-group {
+	margin-bottom: 20px;
+}
+
+.payment-form-group label {
+	display: block;
+	margin-bottom: 10px;
+	color: #333;
+}
+
+.payment-form-group input[type="number"],
+.payment-form-group select {
+	width: 100%;
+	padding: 10px;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	font-size: 14px;
+}
+
+.payment-radio-group {
+	padding: 10px;
+	background-color: #f8f9fa;
+	border-radius: 6px;
+}
+
+.payment-radio-group div {
+	margin-bottom: 8px;
+}
+
+.payment-modal-footer {
+	padding: 15px 20px;
+	background-color: #f8f9fa;
+	border-top: 1px solid #dee2e6;
+	border-radius: 0 0 12px 12px;
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+}
+
+.payment-btn {
+	padding: 10px 20px;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 600;
+	transition: all 0.2s ease;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.payment-btn-primary {
+	background-color: #28a745;
+	color: white;
+}
+
+.payment-btn-primary:hover {
+	background-color: #218838;
+	transform: translateY(-2px);
+}
+
+.payment-btn-secondary {
+	background-color: #6c757d;
+	color: white;
+}
+
+.payment-btn-secondary:hover {
+	background-color: #5a6268;
+	transform: translateY(-2px);
+}
+
+.pressing-btn {
+	display: inline-block;
+	padding: 12px 24px;
+	margin-right: 10px;
+	background-color: #28a745;
+	color: white;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	font-weight: 600;
+	transition: all 0.2s ease;
+}
+
+.pressing-btn:hover {
+	background-color: #218838;
+	transform: translateY(-2px);
+}
+
+.pressing-btn-success {
+	background-color: #28a745;
+	color: white;
+}
+
+.pressing-btn-success:hover {
+	background-color: #218838;
+}
+
+.pressing-btn-danger {
+	background-color: #dc3545;
+	color: white;
+}
+
+.pressing-btn-danger:hover {
+	background-color: #c82333;
+}
+
+.pressing-btn-primary {
+	background-color: #007bff;
+	color: white;
+}
+
+.pressing-btn-primary:hover {
+	background-color: #0056b3;
+}
+
+.pressing-actions {
+	margin: 20px 0;
+	padding: 20px;
+	background-color: #f8f9fa;
+	border-radius: 8px;
+	display: flex;
+	gap: 10px;
+}
+</style>';
+
 if (!$id) {
-	// Create form
-	print load_fiche_titre('Créer un bon d\'entrée', '', '');
+	// Create form with beautiful design
+	print '<div class="pressing-creation-card">';
+	print '<h2><i class="fas fa-box-open"></i> Créer un Bon d\'Entrée</h2>';
+	print '<p style="margin-bottom: 30px; font-size: 16px;">Sélectionnez un client pour commencer</p>';
+
 	print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'">';
 	print '<input type="hidden" name="token" value="'.newToken().'">';
 	print '<input type="hidden" name="action" value="create">';
 
-	print '<table class="border centpercent">';
-	print '<tr><td class="titlefield">Client</td><td>';
+	print '<div class="form-group">';
+	print '<label for="fk_soc"><i class="fas fa-user-tie"></i> Choix du Client</label>';
 
-	// Get list of companies
 	$sql = "SELECT rowid, nom as name FROM " . MAIN_DB_PREFIX . "societe WHERE client = 1 ORDER BY nom";
 	$resql = $db->query($sql);
 	$companies = array();
@@ -181,86 +526,249 @@ if (!$id) {
 		}
 	}
 	print $form->selectarray('fk_soc', $companies, '', 1, 0);
-	print '</td></tr>';
-	print '</table>';
+	print '</div>';
 
-	print '<div class="center"><input type="submit" class="button" value="Créer"></div>';
+	print '<button type="submit" class="button"><i class="fas fa-check-circle"></i> CRÉER</button>';
 	print '</form>';
+	print '</div>';
+
 } else {
-	// Display bon
-	print load_fiche_titre('Bon d\'Entrée: ' . $bon->ref, '', '');
+	// Display bon with improved design
+	print '<div class="pressing-header">';
+	print '<h1><i class="fas fa-file-invoice"></i> Bon d\'Entrée: ' . $bon->ref . '</h1>';
+	print '</div>';
 
 	$soc = new Societe($db);
 	$soc->fetch($bon->fk_soc);
 
 	print '<div class="fichecenter">';
+	print '<div class="pressing-card">';
 	print '<table class="border centpercent">';
-	print '<tr><td class="titlefield">Référence</td><td>' . $bon->ref . '</td></tr>';
-	print '<tr><td>Client</td><td>' . $soc->name . '</td></tr>';
-	print '<tr><td>Date entrée</td><td>' . dol_print_date($bon->date_entree, 'day') . '</td></tr>';
-	print '<tr><td>Statut</td><td>' . $bon->getStatusLabel() . '</td></tr>';
+	print '<tr><td class="titlefield"><strong><i class="fas fa-building"></i> Client</strong></td><td>' . $soc->name . '</td></tr>';
+	print '<tr><td><strong><i class="fas fa-calendar"></i> Date Entrée</strong></td><td>' . dol_print_date($bon->date_entree, 'day') . '</td></tr>';
+	print '<tr><td><strong><i class="fas fa-circle"></i> Statut</strong></td><td>' . $bon->getStatusLabel() . '</td></tr>';
 	print '</table>';
+	print '</div>';
 	print '</div>';
 
 	// Buttons
-	print '<div class="tabsAction">';
+	print '<div class="pressing-actions">';
 
-	// Button Deliver
 	if ($bon->status < 2) {
 		if ($bon->canDeliver()) {
-			print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" style="display:inline;">';
-			print '<input type="hidden" name="token" value="'.newToken().'">';
-			print '<input type="hidden" name="action" value="deliver">';
-			print '<input type="hidden" name="id" value="'.$id.'">';
-			print '<input type="submit" class="butAction" value="Livrer (créer facture)">';
-			print '</form>';
+			print '<button onclick="document.getElementById(\'payment_dialog\').style.display=\'block\'" class="pressing-btn pressing-btn-success">';
+			print '<i class="fas fa-shipping-fast"></i> Livrer & Créer Facture';
+			print '</button>';
 		} else {
-			print '<a class="butActionRefused" href="#">Livrer (tous articles doivent être prêts)</a>';
+			print '<a class="pressing-btn" style="background-color: #ccc; color: #666; cursor: not-allowed;">';
+			print '<i class="fas fa-lock"></i> Livrer (Articles non prêts)';
+			print '</a>';
 		}
 	}
 
-	// Button Delete (always available except if delivered)
 	if ($bon->status < 2 && $user->rights->pressing->delete) {
-		print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" style="display:inline;" onsubmit="return confirm(\'Êtes-vous sûr de vouloir supprimer ce bon et tous ses articles ?\');">';
+		print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" style="display:inline;" onsubmit="return confirm(\'Êtes-vous sûr de vouloir supprimer ce bon?\');">';
 		print '<input type="hidden" name="token" value="'.newToken().'">';
 		print '<input type="hidden" name="action" value="delete">';
 		print '<input type="hidden" name="id" value="'.$id.'">';
-		print '<input type="submit" class="butActionDelete" value="Supprimer le bon">';
+		print '<button type="submit" class="pressing-btn pressing-btn-danger"><i class="fas fa-trash"></i> Supprimer</button>';
 		print '</form>';
 	}
 
 	print '</div>';
 
+	// Payment dialog (modal)
+	print '
+	<div id="payment_dialog" class="payment-modal" style="display:none;">
+		<div class="payment-modal-content">
+			<div class="payment-modal-header">
+				<h2>Paiement & Livraison</h2>
+				<span class="payment-modal-close" onclick="document.getElementById(\'payment_dialog\').style.display=\'none\'">&times;</span>
+			</div>
+			<form method="POST" action="'.$_SERVER["PHP_SELF"].'?id='.$id.'" id="payment_form">
+				<input type="hidden" name="token" value="'.newToken().'">
+				<input type="hidden" name="action" value="process_payment">
+				<input type="hidden" name="id" value="'.$id.'">
+
+				<div class="payment-form-group">
+					<label><strong>Mode de Paiement</strong></label>
+					<div class="payment-radio-group">
+						<div>
+							<input type="radio" id="unpaid" name="payment_type" value="unpaid" checked onchange="togglePaymentFields()">
+							<label for="unpaid" style="display:inline; margin-left: 10px;"><i class="fas fa-times-circle"></i> Laisser Impayé</label>
+						</div>
+						<div style="margin-top: 10px;">
+							<input type="radio" id="paid" name="payment_type" value="paid" onchange="togglePaymentFields()">
+							<label for="paid" style="display:inline; margin-left: 10px;"><i class="fas fa-check-circle"></i> Marquer Payé</label>
+						</div>
+					</div>
+				</div>
+
+				<div id="payment_fields" style="display:none;">
+					<div class="payment-form-group">
+						<label for="payment_amount"><strong>Montant à Payer</strong></label>
+						<input type="number" id="payment_amount" name="payment_amount" step="0.01" min="0" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+					</div>
+
+					<div class="payment-form-group">
+						<label for="fk_bank_account"><strong>Compte Bancaire</strong></label>';
+
+	// Load bank accounts
+	require_once DOL_DOCUMENT_ROOT . '/compta/bank/class/account.class.php';
+	$account = new Account($db);
+	$banks = $account->list_array();
+	print $form->selectarray('fk_bank_account', $banks, '', 1, 0);
+
+	print '
+					</div>
+				</div>
+
+				<div class="payment-modal-footer">
+					<button type="button" onclick="document.getElementById(\'payment_dialog\').style.display=\'none\'" class="payment-btn payment-btn-secondary">
+						<i class="fas fa-times"></i> Annuler
+					</button>
+					<button type="submit" class="payment-btn payment-btn-primary">
+						<i class="fas fa-check"></i> Confirmer Livraison
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<script>
+	function togglePaymentFields() {
+		const isPaid = document.getElementById("paid").checked;
+		document.getElementById("payment_fields").style.display = isPaid ? "block" : "none";
+		if (isPaid) {
+			document.getElementById("payment_amount").required = true;
+			document.getElementById("fk_bank_account").required = true;
+		} else {
+			document.getElementById("payment_amount").required = false;
+			document.getElementById("fk_bank_account").required = false;
+		}
+	}
+
+	// Close modal when clicking outside of it
+	window.onclick = function(event) {
+		const modal = document.getElementById("payment_dialog");
+		if (event.target === modal) {
+			modal.style.display = "none";
+		}
+	}
+	</script>
+	';
+
+	// Add article form FIRST (more visible)
+	print '<div style="margin-bottom: 30px; padding: 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 8px; color: white; border-radius: 8px;">';
+	print '<h3 style="margin-top: 0; margin-bottom: 20px; color: white;"><i class="fas fa-plus-circle"></i> Ajouter un Article au Bon</h3>';
+
+	print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'?id='.$id.'" id="form_add_article">';
+	print '<input type="hidden" name="token" value="'.newToken().'">';
+	print '<input type="hidden" name="action" value="add_article">';
+	print '<input type="hidden" name="id" value="'.$id.'">';
+
+	print '<table class="border centpercent" style="background-color: white; color: #333; margin-bottom: 20px;">';
+
+	// Reference Article
+	print '<tr style="background-color: #f8f9fa;">';
+	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-barcode"></i> Réf Article</td>';
+	print '<td style="padding: 12px;"><input type="text" name="ref_article" required placeholder="EX: ART-001" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;"></td>';
+	print '</tr>';
+
+	// Product
+	print '<tr>';
+	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-box"></i> Produit</td>';
+	print '<td style="padding: 12px;">';
+	$sql = "SELECT rowid, ref, label FROM " . MAIN_DB_PREFIX . "product WHERE entity IN (0," . $conf->entity . ") ORDER BY ref";
+	$resql = $db->query($sql);
+	$products = array(0 => '-- Sélectionner un produit --');
+	if ($resql) {
+		while ($obj = $db->fetch_object($resql)) {
+			$products[$obj->rowid] = $obj->ref . ' - ' . $obj->label;
+		}
+	}
+	print $form->selectarray('fk_product', $products, '', 0);
+	print '</td>';
+	print '</tr>';
+
+	// Quantity
+	print '<tr style="background-color: #f8f9fa;">';
+	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-cubes"></i> Quantité</td>';
+	print '<td style="padding: 12px;"><input type="number" name="qty" value="1" min="1" step="1" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;"></td>';
+	print '</tr>';
+
+	// Price
+	print '<tr>';
+	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-price-tag"></i> Prix Unitaire</td>';
+	print '<td style="padding: 12px;"><input type="number" name="price" step="0.01" min="0" required placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;"></td>';
+	print '</tr>';
+
+	// Warehouse
+	print '<tr style="background-color: #f8f9fa;">';
+	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-warehouse"></i> Entrepôt</td>';
+	print '<td style="padding: 12px;">';
+	$sql_ent = "SELECT rowid, label FROM " . MAIN_DB_PREFIX . "entrepot WHERE entity IN (0," . $conf->entity . ") ORDER BY label";
+	$resql_ent = $db->query($sql_ent);
+	$warehouses = array(0 => '-- Sélectionner un entrepôt --');
+	if ($resql_ent) {
+		while ($obj_ent = $db->fetch_object($resql_ent)) {
+			$warehouses[$obj_ent->rowid] = $obj_ent->label;
+		}
+	}
+	print $form->selectarray('fk_entrepot', $warehouses, '', 0);
+	print '</td>';
+	print '</tr>';
+
+	print '</table>';
+
+	print '<div class="center" style="margin-top: 20px;">';
+	print '<button type="submit" class="pressing-btn" style="background-color: white; color: #28a745; padding: 12px 30px; font-size: 15px;"><i class="fas fa-plus-circle"></i> Ajouter l\'Article</button>';
+	print '</div>';
+	print '</form>';
+	print '</div>';
+
 	// Status summary
-	print '<div style="margin-bottom: 20px;">';
-	print '<b>Résumé articles:</b><br>';
-	print '<ul>';
-	print '<li>En attente: ' . $stats[0] . '</li>';
-	print '<li>En traitement: ' . $stats[1] . '</li>';
-	print '<li>Prêts à livrer: ' . $stats[2] . '</li>';
-	print '<li>Livrés: ' . $stats[3] . '</li>';
-	print '</ul>';
+	print '<div style="margin-bottom: 20px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid #28a745;">';
+	print '<b><i class="fas fa-chart-bar"></i> Résumé Articles:</b><br><br>';
+	print '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">';
+	print '<div style="text-align: center; padding: 15px; background: white; border-radius: 6px;">';
+	print '<div style="font-size: 24px; font-weight: 700; color: #ffc107;">' . $stats[0] . '</div>';
+	print '<div style="font-size: 12px; color: #666; margin-top: 5px;">En Attente</div>';
+	print '</div>';
+	print '<div style="text-align: center; padding: 15px; background: white; border-radius: 6px;">';
+	print '<div style="font-size: 24px; font-weight: 700; color: #17a2b8;">' . $stats[1] . '</div>';
+	print '<div style="font-size: 12px; color: #666; margin-top: 5px;">En Traitement</div>';
+	print '</div>';
+	print '<div style="text-align: center; padding: 15px; background: white; border-radius: 6px;">';
+	print '<div style="font-size: 24px; font-weight: 700; color: #28a745;">' . $stats[2] . '</div>';
+	print '<div style="font-size: 12px; color: #666; margin-top: 5px;">Prêts à Livrer</div>';
+	print '</div>';
+	print '<div style="text-align: center; padding: 15px; background: white; border-radius: 6px;">';
+	print '<div style="font-size: 24px; font-weight: 700; color: #999;">' . $stats[3] . '</div>';
+	print '<div style="font-size: 12px; color: #666; margin-top: 5px;">Livrés</div>';
+	print '</div>';
+	print '</div>';
 	print '</div>';
 
 	// Articles list
-	print load_fiche_titre('Articles du bon', '', '');
-	print '<table class="liste centpercent">';
-	print '<tr class="liste_titre">';
-	print '<td>Réf</td>';
-	print '<td>Produit</td>';
-	print '<td>Entrepôt</td>';
-	print '<td>Dimensions</td>';
-	print '<td>Prix</td>';
-	print '<td>Statut</td>';
-	print '<td>Actions</td>';
-	print '</tr>';
+	print load_fiche_titre('Articles du Bon', '', '');
+	print '<table class="pressing-table centpercent">';
+	print '<thead><tr>';
+	print '<th><i class="fas fa-barcode"></i> Réf</th>';
+	print '<th><i class="fas fa-box"></i> Produit</th>';
+	print '<th><i class="fas fa-warehouse"></i> Entrepôt</th>';
+	print '<th><i class="fas fa-cubes"></i> Qté</th>';
+	print '<th><i class="fas fa-price-tag"></i> Prix</th>';
+	print '<th><i class="fas fa-traffic-light"></i> Statut</th>';
+	print '<th><i class="fas fa-cog"></i> Actions</th>';
+	print '</tr></thead><tbody>';
 
 	if (!empty($articles)) {
 		$prod = new Product($db);
 		$ent = new Entrepot($db);
 		foreach ($articles as $art) {
 			print '<tr class="oddeven">';
-			print '<td>' . $art->ref_article . '</td>';
+			print '<td><strong>' . $art->ref_article . '</strong></td>';
 
 			$plabel = '';
 			if ($art->fk_product > 0) {
@@ -276,59 +784,48 @@ if (!$id) {
 			}
 			print '<td>' . $elabel . '</td>';
 
-			print '<td>' . (empty($art->longueur) ? '' : ($art->longueur . 'x' . $art->largeur . ' cm')) . '</td>';
-			print '<td>' . number_format($art->price, 2) . ' €</td>';
-			print '<td>' . $art->getStatusLabel() . '</td>';
-			print '<td><a href="' . DOL_URL_ROOT . '/custom/pressing/article/card.php?id='.$art->id.'">Modifier</a></td>';
+			print '<td>' . $art->qty . '</td>';
+			print '<td>' . price($art->price) . '</td>';
+
+			// Status with badge
+			$status_label = $art->getStatusLabel();
+			$status_class = 'article-status-' . $art->status;
+			print '<td><span class="' . $status_class . '">' . $status_label . '</span></td>';
+
+			// Action buttons
+			print '<td>';
+			print '<div class="status-buttons">';
+
+			// Button to next status (only if not delivered)
+			if ($art->status < 2) {
+				print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'" style="display:inline;">';
+				print '<input type="hidden" name="token" value="'.newToken().'">';
+				print '<input type="hidden" name="action" value="change_status">';
+				print '<input type="hidden" name="article_id" value="'.$art->id.'">';
+				print '<input type="hidden" name="id" value="'.$id.'">';
+
+				$next_status = $art->status + 1;
+				$status_labels = array(1 => 'Traiter', 2 => 'Prêt');
+				print '<input type="hidden" name="new_status" value="'.$next_status.'">';
+				print '<button type="submit" class="status-btn status-btn-next">→ ' . $status_labels[$next_status] . '</button>';
+				print '</form>';
+			}
+
+			// Edit button
+			print '<a href="' . DOL_URL_ROOT . '/custom/pressing/article/card.php?id='.$art->id.'" class="status-btn" style="background-color: #007bff; color: white; text-decoration: none;">';
+			print '<i class="fas fa-edit"></i>';
+			print '</a>';
+
+			print '</div>';
+			print '</td>';
 			print '</tr>';
 		}
 	} else {
-		print '<tr><td colspan="7" class="opacitymedium">Aucun article.</td></tr>';
+		print '<tr><td colspan="7" class="opacitymedium" style="text-align: center; padding: 30px;"><i class="fas fa-inbox"></i> Aucun article pour le moment.</td></tr>';
 	}
-	print '</table>';
-
-	// Add article form
-	if ($user->rights->pressing->write) {
-		print '<br>';
-		print load_fiche_titre('Ajouter un article', '', '');
-		print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'?id='.$id.'" id="form_add_article">';
-		print '<input type="hidden" name="token" value="'.newToken().'">';
-		print '<input type="hidden" name="action" value="add_article">';
-
-		print '<table class="border centpercent">';
-		print '<tr><td class="titlefield">Réf Article</td><td><input type="text" name="ref_article" required></td></tr>';
-		print '<tr><td>Produit</td><td>';
-		$form->select_produits('', 'fk_product', '', 0, 0, -1, 2, '', 1, array(), 0, '1', 0, '', 0, '1');
-		print '</td></tr>';
-		print '<tr><td>Longueur (cm)</td><td><input type="number" name="longueur" id="longueur" step="0.1" min="0"></td></tr>';
-		print '<tr><td>Largeur (cm)</td><td><input type="number" name="largeur" id="largeur" step="0.1" min="0"></td></tr>';
-		print '<tr><td>Surface (m²)</td><td><span id="surface_display">-</span> m²</td></tr>';
-		print '<tr><td>Prix (€)</td><td><input type="number" name="price" id="price" step="0.01" min="0"></td></tr>';
-		print '<tr><td>Entrepôt</td><td>';
-		$formproduct->selectWarehouses('', 'fk_entrepot', '', 1);
-		print '</td></tr>';
-		print '</table>';
-
-		print '<div class="center"><input type="submit" class="button" value="Ajouter"></div>';
-		print '</form>';
-
-		// JavaScript for surface calculation
-		print '<script type="text/javascript">
-		document.getElementById("longueur").addEventListener("input", function() {
-			updateSurface();
-		});
-		document.getElementById("largeur").addEventListener("input", function() {
-			updateSurface();
-		});
-		function updateSurface() {
-			const l = parseFloat(document.getElementById("longueur").value) || 0;
-			const lg = parseFloat(document.getElementById("largeur").value) || 0;
-			const surface = (l > 0 && lg > 0) ? ((l * lg) / 10000).toFixed(4) : "-";
-			document.getElementById("surface_display").textContent = surface;
-		}
-		</script>';
-	}
+	print '</tbody></table>';
 }
 
 llxFooter();
 $db->close();
+?>
