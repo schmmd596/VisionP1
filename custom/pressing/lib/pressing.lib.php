@@ -130,7 +130,7 @@ function pressing_deliver_bon($db, $bon, $user)
 		}
 	}
 
-	// Create invoice (NOT validate)
+	// Create invoice (NOT validate first)
 	$idinvoice = $facture->create($user);
 	if ($idinvoice < 0) {
 		$error_msg = "Erreur création facture: " . $facture->error;
@@ -144,9 +144,15 @@ function pressing_deliver_bon($db, $bon, $user)
 		return -1;
 	}
 
-	// Note: We don't validate the invoice here - it will be created as draft
-	// and can be validated manually by the user. This avoids numbering and validation errors.
-	// The invoice must exist before we can update article records.
+	// Validate the invoice so it can be paid
+	$result = $facture->validate($user);
+	if ($result < 0) {
+		$error_msg = "Erreur validation facture: " . $facture->error;
+		dol_syslog($error_msg, LOG_ERR);
+		$GLOBALS['pressing_last_error'] = $error_msg;
+		$db->rollback();
+		return -1;
+	}
 
 	// Create stock movements and update articles
 	foreach ($articles as $art) {
@@ -189,5 +195,5 @@ function pressing_deliver_bon($db, $bon, $user)
 	}
 
 	$db->commit();
-	return 1;
+	return $idinvoice;
 }

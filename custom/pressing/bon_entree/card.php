@@ -115,16 +115,28 @@ if ($action == 'process_payment' && $user->rights->pressing->write && $id > 0) {
 	if ($payment_type == 'paid' && ($payment_amount <= 0 || empty($fk_bank_account))) {
 		setEventMessages('Veuillez entrer un montant valide et sélectionner un compte bancaire', null, 'errors');
 	} else {
-		// Deliver the bon
-		$result = pressing_deliver_bon($db, $bon, $user);
-		if ($result >= 0) {
+		// Deliver the bon and create/validate invoice
+		$idinvoice = pressing_deliver_bon($db, $bon, $user);
+		if ($idinvoice > 0) {
 			// Handle payment if paid
 			if ($payment_type == 'paid') {
+				require_once DOL_DOCUMENT_ROOT . '/compta/paiement/class/paiement.class.php';
 				require_once DOL_DOCUMENT_ROOT . '/compta/bank/class/account.class.php';
-				$bank = new Account($db);
-				$bank->fetch($fk_bank_account);
+				
+				$paiement = new Paiement($db);
+				$paiement->datepaye = dol_now();
+				$paiement->amounts = array($idinvoice => $payment_amount);
+				$paiement->paiementid = GETPOSTINT('fk_paiement') ? GETPOSTINT('fk_paiement') : 4; // Default to Cash if not provided
+				$paiement->num_paiement = '';
+				
+				$paiement_id = $paiement->create($user);
+				if ($paiement_id > 0) {
+					$paiement->addPaymentToBank($user, 'payment', '(CustomerInvoicePayment)', $fk_bank_account, '', '');
+				} else {
+					setEventMessages('Erreur lors de la création du paiement: ' . $paiement->error, null, 'warnings');
+				}
 
-				// Create payment record (simple logging for now)
+				// Create payment record on the bon
 				$bon->payment_status = 1; // 1 = paid
 				$bon->payment_amount = $payment_amount;
 				$bon->fk_bank_account = $fk_bank_account;
@@ -134,19 +146,16 @@ if ($action == 'process_payment' && $user->rights->pressing->write && $id > 0) {
 			}
 
 			if ($bon->update($user) >= 0) {
-				setEventMessages('Bon livré avec succès! Une facture a été créée en brouillon.', null, 'mesgs');
+				setEventMessages('Bon livré avec succès! Facture validée.', null, 'mesgs');
 				$bon->fetch($id);
 			} else {
-				setEventMessages('Bon livré mais erreur lors de la sauvegarde du paiement', null, 'warnings');
+				setEventMessages('Bon livré mais erreur lors de la sauvegarde locale du paiement', null, 'warnings');
 				$bon->fetch($id);
 			}
 		} else {
 			$error_msg = 'Erreur lors de la livraison';
-			if ($result == -1) {
-				$error_msg = 'Erreur lors de la création de la facture';
-				if (!empty($GLOBALS['pressing_last_error'])) {
-					$error_msg .= ': ' . $GLOBALS['pressing_last_error'];
-				}
+			if (!empty($GLOBALS['pressing_last_error'])) {
+				$error_msg .= ': ' . $GLOBALS['pressing_last_error'];
 			}
 			setEventMessages($error_msg, null, 'errors');
 		}
@@ -606,17 +615,35 @@ if (!$id) {
 
 				<div id="payment_fields" style="display:none;">
 					<div class="payment-form-group">
-						<label for="payment_amount"><strong>Montant à Payer</strong></label>
-						<input type="number" id="payment_amount" name="payment_amount" step="0.01" min="0" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+						<label for="payment_amount"><strong>Montant à Payer</strong></label>';
+						
+	$total_amount = 0;
+	if (is_array($articles)) {
+		foreach ($articles as $art) {
+			$total_amount += (empty($art->price) ? 0 : $art->price) * (empty($art->qty) ? 1 : $art->qty);
+		}
+	}
+	
+	print '					<input type="number" id="payment_amount" name="payment_amount" step="0.01" min="0" value="' . number_format($total_amount, 2, '.', '') . '" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
 					</div>
+
+					<div class="payment-form-group">
+						<label for="fk_paiement"><strong>Mode de Paiement</strong></label>';
+	$form->select_types_paiements('', 'fk_paiement', '', 2); // 2 means generic payment modes
+	print '				</div>
 
 					<div class="payment-form-group">
 						<label for="fk_bank_account"><strong>Compte Bancaire</strong></label>';
 
-	// Load bank accounts
-	require_once DOL_DOCUMENT_ROOT . '/compta/bank/class/account.class.php';
-	$account = new Account($db);
-	$banks = $account->list_array();
+	// Load bank accounts via direct SQL
+	$banks = array();
+	$sql_banks = "SELECT rowid, ref, label FROM " . MAIN_DB_PREFIX . "bank_account WHERE entity = " . (int)$conf->entity . " ORDER BY ref";
+	$res_banks = $db->query($sql_banks);
+	if ($res_banks) {
+		while ($obj_bank = $db->fetch_object($res_banks)) {
+			$banks[$obj_bank->rowid] = $obj_bank->ref . ' - ' . $obj_bank->label;
+		}
+	}
 	print $form->selectarray('fk_bank_account', $banks, '', 1, 0);
 
 	print '
@@ -707,12 +734,12 @@ if (!$id) {
 	print '<tr style="background-color: #f8f9fa;">';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-warehouse"></i> Entrepôt</td>';
 	print '<td style="padding: 12px;">';
-	$sql_ent = "SELECT rowid, label FROM " . MAIN_DB_PREFIX . "entrepot WHERE entity IN (0," . $conf->entity . ") ORDER BY label";
-	$resql_ent = $db->query($sql_ent);
-	$warehouses = array(0 => '-- Sélectionner un entrepôt --');
-	if ($resql_ent) {
-		while ($obj_ent = $db->fetch_object($resql_ent)) {
-			$warehouses[$obj_ent->rowid] = $obj_ent->label;
+	$entrepot_sel = new Entrepot($db);
+	$warehouses_raw = $entrepot_sel->list_array();
+	$warehouses = array(0 => '-- S&eacute;lectionner un entrep&ocirc;t --');
+	if (!empty($warehouses_raw)) {
+		foreach ($warehouses_raw as $wid => $wlabel) {
+			$warehouses[$wid] = $wlabel;
 		}
 	}
 	print $form->selectarray('fk_entrepot', $warehouses, '', 0);
