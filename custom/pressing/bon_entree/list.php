@@ -25,21 +25,26 @@ $sortorder = GETPOST('sortorder', 'aZ09comma');
 // View
 llxHeader('', $langs->trans('Reception Orders'));
 
+// Include pressing stylesheet
+require_once '../includes/header.php';
+
 $form = new Form($db);
 
-print load_fiche_titre($langs->trans('Reception Orders'), '', 'title_generic.png');
+print '<div class="pressing-header">';
+print '<h1><i class="fas fa-inbox"></i> ' . $langs->trans('Reception Orders') . '</h1>';
+print '</div>';
 
 // Filters
 print '<form method="GET" action="'.$_SERVER["PHP_SELF"].'">';
-print '<table class="liste centpercent">';
-print '<tr class="liste_titre">';
-print '<td>Réf</td>';
-print '<td>Client</td>';
-print '<td>Date Entrée</td>';
-print '<td>Statut</td>';
-print '<td>Articles</td>';
-print '<td>Actions</td>';
-print '</tr>';
+print '<table class="pressing-table">';
+print '<thead><tr>';
+print '<th><i class="fas fa-barcode"></i> Réf</th>';
+print '<th><i class="fas fa-user"></i> Client</th>';
+print '<th><i class="fas fa-calendar"></i> Date Entrée</th>';
+print '<th><i class="fas fa-circle"></i> Statut</th>';
+print '<th><i class="fas fa-box"></i> Articles</th>';
+print '<th><i class="fas fa-cog"></i> Actions</th>';
+print '</tr></thead><tbody>';
 
 $sql = "SELECT pa.rowid, pa.ref, pa.fk_soc, pa.date_entree, pa.status,";
 $sql .= " COUNT(DISTINCT article.rowid) as nb_articles";
@@ -72,20 +77,22 @@ if ($resql) {
 		$bon->fetch($obj->rowid);
 		print '<td>';
 		if ($obj->status == 0) {
-			print '<span class="badge badge-warning">Brouillon</span>';
+			print '<span class="status-badge status-brouillon">Brouillon</span>';
 		} elseif ($obj->status == 1) {
-			print '<span class="badge badge-info">Validé</span>';
+			print '<span class="status-badge status-valide">Validé</span>';
 		} else {
-			print '<span class="badge badge-success">Livré</span>';
+			print '<span class="status-badge status-livre">Livré</span>';
 		}
 		print '</td>';
 
 		// Articles count
-		print '<td>'.$obj->nb_articles.'</td>';
+		print '<td><strong>' . $obj->nb_articles . '</strong></td>';
 
 		// Actions
 		print '<td>';
-		print '<a class="button" href="card.php?id='.$obj->rowid.'">Voir</a>';
+		print '<a class="pressing-btn pressing-btn-primary" href="card.php?id='.$obj->rowid.'">';
+		print '<i class="fas fa-eye"></i> Voir';
+		print '</a>';
 		print '</td>';
 
 		print '</tr>';
@@ -94,13 +101,16 @@ if ($resql) {
 	dol_print_error($db);
 }
 
-print '</table>';
+print '</tbody></table>';
 print '</form>';
 
 // New button
 if ($user->rights->pressing->write) {
-	print '<br>';
-	print '<a class="butAction" href="card.php?action=create">'.$langs->trans('NewReceptionOrder').'</a>';
+	print '<div class="pressing-actions">';
+	print '<a class="pressing-btn pressing-btn-success" href="card.php?action=create">';
+	print '<i class="fas fa-plus-circle"></i> ' . $langs->trans('NewReceptionOrder');
+	print '</a>';
+	print '</div>';
 }
 
 llxFooter();

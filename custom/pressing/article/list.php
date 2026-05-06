@@ -8,9 +8,15 @@ $langs->load("pressing@pressing");
 if (!$user->rights->pressing->read) accessforbidden();
 
 llxHeader('', 'Articles Pressing');
+
+// Include pressing stylesheet
+require_once '../includes/header.php';
+
 $form = new Form($db);
 
-print load_fiche_titre('Liste de tous les Articles', '', '');
+print '<div class="pressing-header">';
+print '<h1><i class="fas fa-cubes"></i> Liste de tous les Articles</h1>';
+print '</div>';
 
 $sql = "SELECT pa.rowid, pa.ref_article, pa.fk_bon_entree, pa.longueur, pa.largeur, pa.surface, pa.price, pa.status,";
 $sql .= " pb.ref as bon_ref FROM " . MAIN_DB_PREFIX . "pressing_article pa";
@@ -19,35 +25,43 @@ $sql .= " ORDER BY pa.rowid DESC LIMIT 100";
 
 $resql = $db->query($sql);
 if ($resql) {
-	print '<table class="liste centpercent">';
-	print '<tr class="liste_titre">';
-	print '<td>Réf</td>';
-	print '<td>Bon Entrée</td>';
-	print '<td>Dimensions (L x l)</td>';
-	print '<td>Surface (m²)</td>';
-	print '<td>Prix</td>';
-	print '<td>Statut</td>';
-	print '<td>Actions</td>';
-	print '</tr>';
+	print '<table class="pressing-table">';
+	print '<thead><tr>';
+	print '<th><i class="fas fa-barcode"></i> Réf</th>';
+	print '<th><i class="fas fa-inbox"></i> Bon Entrée</th>';
+	print '<th><i class="fas fa-ruler"></i> Dimensions</th>';
+	print '<th><i class="fas fa-expand"></i> Surface (m²)</th>';
+	print '<th><i class="fas fa-euro-sign"></i> Prix</th>';
+	print '<th><i class="fas fa-circle"></i> Statut</th>';
+	print '<th><i class="fas fa-cog"></i> Actions</th>';
+	print '</tr></thead><tbody>';
 
 	while ($obj = $db->fetch_object($resql)) {
 		$art = new PressingArticle($db);
-		print '<tr class="oddeven">';
-		print '<td>' . $obj->ref_article . '</td>';
+		print '<tr>';
+		print '<td><strong>' . $obj->ref_article . '</strong></td>';
 		print '<td><a href="' . DOL_URL_ROOT . '/custom/pressing/bon_entree/card.php?id='.$obj->fk_bon_entree.'">' . $obj->bon_ref . '</a></td>';
-		print '<td>' . (empty($obj->longueur) ? '-' : ($obj->longueur . ' x ' . $obj->largeur)) . ' cm</td>';
-		print '<td>' . (empty($obj->surface) ? '-' : number_format($obj->surface, 4)) . '</td>';
-		print '<td>' . number_format($obj->price, 2) . ' €</td>';
+		print '<td>' . (empty($obj->longueur) ? '-' : ($obj->longueur . ' x ' . $obj->largeur . ' cm')) . '</td>';
+		print '<td>' . (empty($obj->surface) ? '-' : number_format($obj->surface, 4) . ' m²') . '</td>';
+		print '<td><strong>' . number_format($obj->price, 2) . ' €</strong></td>';
 		print '<td>';
-		if ($obj->status == 0) print '<span class="badge badge-warning">Attente</span>';
-		elseif ($obj->status == 1) print '<span class="badge badge-info">Traitement</span>';
-		elseif ($obj->status == 2) print '<span class="badge badge-primary">Prêt</span>';
-		else print '<span class="badge badge-success">Livré</span>';
+		$status_class = '';
+		if ($obj->status == 0) {
+			print '<span class="status-badge status-attente">Attente</span>';
+		} elseif ($obj->status == 1) {
+			print '<span class="status-badge status-traitement">Traitement</span>';
+		} elseif ($obj->status == 2) {
+			print '<span class="status-badge status-pret">Prêt</span>';
+		} else {
+			print '<span class="status-badge status-livre">Livré</span>';
+		}
 		print '</td>';
-		print '<td><a class="button" href="card.php?id='.$obj->rowid.'">Modifier</a></td>';
+		print '<td><a class="pressing-btn pressing-btn-primary" href="card.php?id='.$obj->rowid.'">';
+		print '<i class="fas fa-edit"></i> Modifier';
+		print '</a></td>';
 		print '</tr>';
 	}
-	print '</table>';
+	print '</tbody></table>';
 }
 
 llxFooter();
