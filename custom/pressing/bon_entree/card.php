@@ -65,6 +65,8 @@ if ($action == 'add_article' && $user->rights->pressing->write && $id > 0) {
 		$article->qty = 1;
 	}
 	$article->price = price2num(GETPOST('price'), 'MU');
+	$article->longueur = price2num(GETPOST('longueur'), 'MU');
+	$article->largeur = price2num(GETPOST('largeur'), 'MU');
 
 	if (empty($article->price) || $article->price <= 0) {
 		setEventMessages('Le prix est requis et doit être supérieur à 0', null, 'errors');
@@ -703,28 +705,41 @@ if (!$id) {
 	print '<tr>';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-box"></i> Produit</td>';
 	print '<td style="padding: 12px;">';
-	$sql = "SELECT rowid, ref, label FROM " . MAIN_DB_PREFIX . "product WHERE entity IN (0," . $conf->entity . ") ORDER BY ref";
+	$sql = "SELECT rowid, ref, label, price FROM " . MAIN_DB_PREFIX . "product WHERE entity IN (0," . $conf->entity . ") ORDER BY ref";
 	$resql = $db->query($sql);
-	$products = array(0 => '-- Sélectionner un produit --');
+	print '<select id="fk_product" name="fk_product" class="flat" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;" onchange="calculatePrice()">';
+	print '<option value="0" data-price="0">-- Sélectionner un produit --</option>';
 	if ($resql) {
 		while ($obj = $db->fetch_object($resql)) {
-			$products[$obj->rowid] = $obj->ref . ' - ' . $obj->label;
+			print '<option value="' . $obj->rowid . '" data-price="' . $obj->price . '">' . $obj->ref . ' - ' . $obj->label . '</option>';
 		}
 	}
-	print $form->selectarray('fk_product', $products, '', 0);
+	print '</select>';
 	print '</td>';
+	print '</tr>';
+
+	// Longueur
+	print '<tr style="background-color: #f8f9fa;">';
+	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-arrows-alt-v"></i> Longueur (cm)</td>';
+	print '<td style="padding: 12px;"><input type="number" id="longueur" name="longueur" value="1" min="0" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;" onchange="calculatePrice()" onkeyup="calculatePrice()"></td>';
+	print '</tr>';
+
+	// Largeur
+	print '<tr>';
+	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-arrows-alt-h"></i> Largeur (cm)</td>';
+	print '<td style="padding: 12px;"><input type="number" id="largeur" name="largeur" value="1" min="0" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;" onchange="calculatePrice()" onkeyup="calculatePrice()"></td>';
 	print '</tr>';
 
 	// Quantity
 	print '<tr style="background-color: #f8f9fa;">';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-cubes"></i> Quantité</td>';
-	print '<td style="padding: 12px;"><input type="number" name="qty" value="1" min="1" step="1" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;"></td>';
+	print '<td style="padding: 12px;"><input type="number" id="qty" name="qty" value="1" min="1" step="1" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;" onchange="calculatePrice()" onkeyup="calculatePrice()"></td>';
 	print '</tr>';
 
 	// Price
 	print '<tr>';
-	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-price-tag"></i> Prix Unitaire</td>';
-	print '<td style="padding: 12px;"><input type="number" name="price" step="0.01" min="0" required placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;"></td>';
+	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-price-tag"></i> Prix Unitaire Total</td>';
+	print '<td style="padding: 12px;"><input type="number" id="price" name="price" step="0.01" min="0" required placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; background-color: #e9ecef;"></td>';
 	print '</tr>';
 
 	// Warehouse
@@ -744,6 +759,24 @@ if (!$id) {
 	print '</tr>';
 
 	print '</table>';
+
+	print '<script>
+	function calculatePrice() {
+		var selectProduct = document.getElementById("fk_product");
+		var productPrice = 0;
+		if (selectProduct.options[selectProduct.selectedIndex]) {
+			productPrice = parseFloat(selectProduct.options[selectProduct.selectedIndex].getAttribute("data-price")) || 0;
+		}
+		
+		var longueur = parseFloat(document.getElementById("longueur").value) || 0;
+		var largeur = parseFloat(document.getElementById("largeur").value) || 0;
+		var qty = parseFloat(document.getElementById("qty").value) || 1;
+		
+		// LONGEUR * LARGEUR * QUANTITE * PRIX UNITAIRE
+		var totalPrice = longueur * largeur * qty * productPrice;
+		document.getElementById("price").value = totalPrice.toFixed(2);
+	}
+	</script>';
 
 	print '<div class="center" style="margin-top: 20px;">';
 	print '<button type="submit" class="pressing-btn" style="background-color: white; color: #28a745; padding: 12px 30px; font-size: 15px;"><i class="fas fa-plus-circle"></i> Ajouter l\'Article</button>';
