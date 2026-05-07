@@ -680,8 +680,10 @@ if (!$id) {
 	</script>
 	';
 
-	// Add article form FIRST (more visible)
-	print '<div style="margin-bottom: 30px; padding: 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 8px; color: white; border-radius: 8px;">';
+	// Show add form and summary only if not delivered
+	if ($bon->status < 2) {
+		// Add article form FIRST (more visible)
+		print '<div style="margin-bottom: 30px; padding: 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 8px; color: white;">';
 	print '<h3 style="margin-top: 0; margin-bottom: 20px; color: white;"><i class="fas fa-plus-circle"></i> Ajouter un Article au Bon</h3>';
 
 	print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'?id='.$id.'" id="form_add_article">';
@@ -771,6 +773,16 @@ if (!$id) {
 	print '</div>';
 	print '</div>';
 	print '</div>';
+	} else {
+		// Show invoice link if delivered
+		print '<div style="margin-bottom: 30px; padding: 20px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">';
+		print '<div>';
+		print '<h3 style="margin: 0; color: #28a745;"><i class="fas fa-check-circle"></i> Ce bon d\'entrée a été livré et facturé</h3>';
+		print '<p style="margin: 5px 0 0 0; color: #666;">La facture correspondante a été générée dans le système.</p>';
+		print '</div>';
+		print '<a href="' . DOL_URL_ROOT . '/compta/facture/list.php?leftmenu=customers_bills" class="pressing-btn" style="background-color: #28a745; color: white; text-decoration: none; padding: 10px 20px;"><i class="fas fa-file-invoice"></i> Voir les Factures</a>';
+		print '</div>';
+	}
 
 	// Articles list
 	print load_fiche_titre('Articles du Bon', '', '');
