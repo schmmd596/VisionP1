@@ -78,7 +78,7 @@ class modPressing extends DolibarrModules
 		$r++;
 
 		// Left Menus - Articles
-		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'<i class="fas fa-shopping-bag"></i> Articles', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_articles', 'url'=>'/custom/pressing/article/list.php', 'langs'=>'pressing@pressing', 'position'=>20, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
+		$this->menu[$r]=array('fk_menu'=>'fk_mainmenu=pressing', 'type'=>'left', 'titre'=>'<i class="fas fa-shopping-bag"></i> Entrées', 'mainmenu'=>'pressing', 'leftmenu'=>'pressing_articles', 'url'=>'/custom/pressing/article/list.php', 'langs'=>'pressing@pressing', 'position'=>20, 'enabled'=>'1', 'perms'=>'1', 'target'=>'', 'user'=>2);
 		$r++;
 
 		// Left Menus - Entrepôts

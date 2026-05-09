@@ -4,6 +4,8 @@ require_once DOL_DOCUMENT_ROOT.'/product/stock/class/entrepot.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
 require_once '../class/pressingarticle.class.php';
 require_once '../class/pressingbonentree.class.php';
+require_once DOL_DOCUMENT_ROOT.'/compta/facture/class/facture.class.php';
+require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 
 if (!$user->rights->pressing->read) accessforbidden();
 
@@ -24,6 +26,47 @@ if (GETPOST('action') == 'change_status' && $user->rights->pressing->write) {
 				} else {
 					setEventMessages('Erreur lors de la mise à jour du statut', null, 'errors');
 				}
+			}
+		}
+	}
+	header("Location: ".$_SERVER["PHP_SELF"]."?id=".$id);
+	exit;
+}
+
+// Transfer article action
+if (GETPOST('action') == 'transfer_article' && $user->rights->pressing->write) {
+	$article_id = GETPOSTINT('article_id');
+	$dest_entrepot = GETPOSTINT('dest_entrepot');
+
+	if ($article_id > 0 && $dest_entrepot > 0 && $dest_entrepot != $id) {
+		$article = new PressingArticle($db);
+		if ($article->fetch($article_id) > 0) {
+			require_once DOL_DOCUMENT_ROOT . '/product/stock/class/mouvementstock.class.php';
+			$db->begin();
+			
+			$mouvstock = new MouvementStock($db);
+			$mouvstock->fk_product = $article->fk_product;
+			
+			$mouvstock->fk_entrepot = $id;
+			$mouvstock->label = "Transfert sortant - " . $article->ref_article;
+			$res1 = $mouvstock->_create($user, $article->fk_product, $id, -$article->qty, 2, 0, $mouvstock->label);
+			
+			$mouvstock->fk_entrepot = $dest_entrepot;
+			$mouvstock->label = "Transfert entrant - " . $article->ref_article;
+			$res2 = $mouvstock->_create($user, $article->fk_product, $dest_entrepot, $article->qty, 3, 0, $mouvstock->label);
+			
+			if ($res1 >= 0 && $res2 >= 0) {
+				$article->fk_entrepot = $dest_entrepot;
+				if ($article->update($user) > 0) {
+					$db->commit();
+					setEventMessages('Article transféré avec succès', null, 'mesgs');
+				} else {
+					$db->rollback();
+					setEventMessages('Erreur lors de la mise à jour de l\'article', null, 'errors');
+				}
+			} else {
+				$db->rollback();
+				setEventMessages('Erreur lors du transfert de stock', null, 'errors');
 			}
 		}
 	}
@@ -228,6 +271,31 @@ print '<style>
 	margin-bottom: 20px;
 	opacity: 0.5;
 }
+
+.transfer-form {
+	display: inline-flex;
+	gap: 5px;
+	align-items: center;
+}
+.transfer-select {
+	padding: 4px;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	font-size: 11px;
+	max-width: 120px;
+}
+.transfer-btn {
+	background-color: #fd7e14;
+	color: white;
+	border: none;
+	padding: 5px 8px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 11px;
+}
+.transfer-btn:hover {
+	background-color: #e86e04;
+}
 </style>';
 
 print '<div class="warehouse-header">';
@@ -260,6 +328,8 @@ if (!empty($articles)) {
 	print '<table class="articles-table">';
 	print '<thead><tr>';
 	print '<th><i class="fas fa-barcode"></i> Réf</th>';
+	print '<th><i class="fas fa-user"></i> Client</th>';
+	print '<th><i class="fas fa-file-invoice"></i> Réf Facture</th>';
 	print '<th><i class="fas fa-box"></i> Produit</th>';
 	print '<th><i class="fas fa-cubes"></i> Qté</th>';
 	print '<th><i class="fas fa-price-tag"></i> Prix</th>';
@@ -268,9 +338,33 @@ if (!empty($articles)) {
 	print '</tr></thead><tbody>';
 
 	$prod = new Product($db);
+	$soc = new Societe($db);
+	$fact = new Facture($db);
+	
+	$entrepots_array = $ent->list_array();
+	unset($entrepots_array[$id]);
 	foreach ($articles as $article) {
 		print '<tr>';
 		print '<td><strong>' . $article->ref_article . '</strong></td>';
+
+		$client_name = '';
+		if ($article->fk_bon_entree > 0) {
+			$bon = new PressingBonEntree($db);
+			if ($bon->fetch($article->fk_bon_entree) > 0 && $bon->fk_soc > 0) {
+				if ($soc->fetch($bon->fk_soc) > 0) {
+					$client_name = $soc->name;
+				}
+			}
+		}
+		print '<td>' . $client_name . '</td>';
+
+		$facture_ref = '';
+		if ($article->fk_facture > 0) {
+			if ($fact->fetch($article->fk_facture) > 0) {
+				$facture_ref = '<a href="'.DOL_URL_ROOT.'/compta/facture/card.php?id='.$article->fk_facture.'">'.$fact->ref.'</a>';
+			}
+		}
+		print '<td>' . $facture_ref . '</td>';
 
 		$plabel = '';
 		if ($article->fk_product > 0) {
@@ -312,6 +406,22 @@ if (!empty($articles)) {
 			print '<a href="' . DOL_URL_ROOT . '/custom/pressing/bon_entree/card.php?id='.$article->fk_bon_entree.'" class="button-edit" style="background-color: #6c757d;">';
 			print '<i class="fas fa-file-invoice"></i> Bon';
 			print '</a>';
+		}
+		
+		// Transfer form
+		if ($article->status < 3 && $user->rights->pressing->write && !empty($entrepots_array)) {
+			print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'?id='.$id.'" class="transfer-form" style="margin-left: 10px;">';
+			print '<input type="hidden" name="token" value="'.newToken().'">';
+			print '<input type="hidden" name="action" value="transfer_article">';
+			print '<input type="hidden" name="article_id" value="'.$article->id.'">';
+			print '<select name="dest_entrepot" class="transfer-select" required>';
+			print '<option value="">Transférer vers...</option>';
+			foreach ($entrepots_array as $eid => $elabel) {
+				print '<option value="'.$eid.'">'.$elabel.'</option>';
+			}
+			print '</select>';
+			print '<button type="submit" class="transfer-btn"><i class="fas fa-exchange-alt"></i></button>';
+			print '</form>';
 		}
 
 		print '</div></td>';

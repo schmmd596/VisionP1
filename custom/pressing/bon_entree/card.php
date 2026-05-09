@@ -58,7 +58,17 @@ if ($action == 'add_article' && $user->rights->pressing->write && $id > 0) {
 	$article = new PressingArticle($db);
 	$article->fk_bon_entree = $id;
 	$article->fk_product = GETPOSTINT('fk_product');
-	$article->ref_article = GETPOST('ref_article', 'alpha');
+	
+	// Auto-generate reference
+	$sql_max = "SELECT MAX(rowid) as max_id FROM " . MAIN_DB_PREFIX . "pressing_article";
+	$resql_max = $db->query($sql_max);
+	$max_id = 0;
+	if ($resql_max) {
+		$obj_max = $db->fetch_object($resql_max);
+		if ($obj_max) $max_id = $obj_max->max_id;
+	}
+	$article->ref_article = 'ART-' . sprintf('%05d', $max_id + 1);
+	
 	$article->fk_entrepot = GETPOSTINT('fk_entrepot');
 	$article->qty = GETPOSTINT('qty');
 	if (empty($article->qty)) {
@@ -695,14 +705,8 @@ if (!$id) {
 
 	print '<table class="border centpercent" style="background-color: white; color: #333; margin-bottom: 20px;">';
 
-	// Reference Article
-	print '<tr style="background-color: #f8f9fa;">';
-	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-barcode"></i> Réf Article</td>';
-	print '<td style="padding: 12px;"><input type="text" name="ref_article" required placeholder="EX: ART-001" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;"></td>';
-	print '</tr>';
-
 	// Product
-	print '<tr>';
+	print '<tr style="background-color: #f8f9fa;">';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-box"></i> Produit</td>';
 	print '<td style="padding: 12px;">';
 	$sql = "SELECT rowid, ref, label, price FROM " . MAIN_DB_PREFIX . "product WHERE entity IN (0," . $conf->entity . ") ORDER BY ref";
@@ -719,31 +723,31 @@ if (!$id) {
 	print '</tr>';
 
 	// Longueur
-	print '<tr style="background-color: #f8f9fa;">';
+	print '<tr>';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-arrows-alt-v"></i> Longueur (cm)</td>';
 	print '<td style="padding: 12px;"><input type="number" id="longueur" name="longueur" value="1" min="0" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;" onchange="calculatePrice()" onkeyup="calculatePrice()"></td>';
 	print '</tr>';
 
 	// Largeur
-	print '<tr>';
+	print '<tr style="background-color: #f8f9fa;">';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-arrows-alt-h"></i> Largeur (cm)</td>';
 	print '<td style="padding: 12px;"><input type="number" id="largeur" name="largeur" value="1" min="0" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;" onchange="calculatePrice()" onkeyup="calculatePrice()"></td>';
 	print '</tr>';
 
 	// Quantity
-	print '<tr style="background-color: #f8f9fa;">';
+	print '<tr>';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-cubes"></i> Quantité</td>';
 	print '<td style="padding: 12px;"><input type="number" id="qty" name="qty" value="1" min="1" step="1" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;" onchange="calculatePrice()" onkeyup="calculatePrice()"></td>';
 	print '</tr>';
 
 	// Price
-	print '<tr>';
+	print '<tr style="background-color: #f8f9fa;">';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-price-tag"></i> Prix Unitaire Total</td>';
 	print '<td style="padding: 12px;"><input type="number" id="price" name="price" step="0.01" min="0" required placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; background-color: #e9ecef;"></td>';
 	print '</tr>';
 
 	// Warehouse
-	print '<tr style="background-color: #f8f9fa;">';
+	print '<tr>';
 	print '<td class="titlefield" style="padding: 12px; font-weight: 600;"><i class="fas fa-warehouse"></i> Entrepôt</td>';
 	print '<td style="padding: 12px;">';
 	$entrepot_sel = new Entrepot($db);
@@ -808,12 +812,22 @@ if (!$id) {
 	print '</div>';
 	} else {
 		// Show invoice link if delivered
+		$invoice_id = 0;
+		if (!empty($articles) && isset($articles[0]->fk_facture)) {
+			$invoice_id = $articles[0]->fk_facture;
+		}
+		
+		$invoice_link = DOL_URL_ROOT . '/compta/facture/card.php?id=' . $invoice_id;
+		if (empty($invoice_id)) {
+			$invoice_link = DOL_URL_ROOT . '/compta/facture/list.php?leftmenu=customers_bills';
+		}
+		
 		print '<div style="margin-bottom: 30px; padding: 20px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">';
 		print '<div>';
 		print '<h3 style="margin: 0; color: #28a745;"><i class="fas fa-check-circle"></i> Ce bon d\'entrée a été livré et facturé</h3>';
 		print '<p style="margin: 5px 0 0 0; color: #666;">La facture correspondante a été générée dans le système.</p>';
 		print '</div>';
-		print '<a href="' . DOL_URL_ROOT . '/compta/facture/list.php?leftmenu=customers_bills" class="pressing-btn" style="background-color: #28a745; color: white; text-decoration: none; padding: 10px 20px;"><i class="fas fa-file-invoice"></i> Voir les Factures</a>';
+		print '<a href="' . $invoice_link . '" class="pressing-btn" style="background-color: #28a745; color: white; text-decoration: none; padding: 10px 20px;"><i class="fas fa-file-invoice"></i> Voir la Facture</a>';
 		print '</div>';
 	}
 
