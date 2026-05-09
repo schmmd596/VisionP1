@@ -133,27 +133,20 @@ class modPressing extends DolibarrModules
 	{
 		$sql = array();
 
-		// Load SQL files for table creation and indexes
-		// All files use IF NOT EXISTS / IF NOT EXISTS syntax to avoid errors
-		$sqlfiles = array(
-			'/custom/pressing/sql/llx_pressing_bon_entree.sql',
-			'/custom/pressing/sql/llx_pressing_bon_entree.key.sql',
-			'/custom/pressing/sql/llx_pressing_article.sql',
-			'/custom/pressing/sql/llx_pressing_article.key.sql'
-		);
+		// Load SQL file for table creation, indexes, and migrations
+		// All statements use IF NOT EXISTS syntax to avoid errors on existing installations
+		$sqlfile = '/custom/pressing/sql/install.sql';
 
-		foreach ($sqlfiles as $sqlfile) {
-			if (file_exists(DOL_DOCUMENT_ROOT . $sqlfile)) {
-				$content = file_get_contents(DOL_DOCUMENT_ROOT . $sqlfile);
-				// Filter out empty statements and comments
-				$statements = array_filter(
-					array_map('trim', explode(';', str_replace("\n", ' ', $content))),
-					function($stmt) {
-						return !empty($stmt) && !preg_match('/^--/', trim($stmt));
-					}
-				);
-				$sql = array_merge($sql, $statements);
-			}
+		if (file_exists(DOL_DOCUMENT_ROOT . $sqlfile)) {
+			$content = file_get_contents(DOL_DOCUMENT_ROOT . $sqlfile);
+			// Filter out empty statements and comments
+			$statements = array_filter(
+				array_map('trim', explode(';', str_replace("\n", ' ', $content))),
+				function($stmt) {
+					return !empty($stmt) && !preg_match('/^--/', trim($stmt));
+				}
+			);
+			$sql = array_merge($sql, $statements);
 		}
 
 		return $this->_init($sql, $options);

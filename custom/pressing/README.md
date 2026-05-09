@@ -126,8 +126,7 @@ custom/pressing/
 │   └── modPressing.class.php (Existant - Définition)
 │
 ├── sql/
-│   ├── llx_pressing_article.sql (Table BD)
-│   └── llx_pressing_article.key.sql (Clés)
+│   └── install.sql (Tables, indexes, et migrations)
 │
 └── docs/ (NOUVEAU)
     ├── README.md (Ce fichier)

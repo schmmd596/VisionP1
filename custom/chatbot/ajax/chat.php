@@ -26,12 +26,6 @@ header('Content-Type: application/json; charset=utf-8');
 if (!$user->id) { http_response_code(401); die(json_encode(['error' => 'Non authentifié'])); }
 if (empty($conf->chatbot->enabled)) { http_response_code(403); die(json_encode(['error' => 'Module désactivé'])); }
 
-$api_key = $conf->global->CHATBOT_API_KEY ?? '';
-if (empty($api_key)) {
-    http_response_code(503);
-    die(json_encode(['error' => 'Clé API non configurée. Allez dans Configuration → Chatbot IA → Setup.']));
-}
-
 $input       = json_decode(file_get_contents('php://input'), true) ?: $_POST;
 $user_message = trim($input['message'] ?? '');
 $history      = $input['history'] ?? [];
@@ -41,18 +35,30 @@ $user_language = $input['language'] ?? 'fr-FR';  // User's detected language
 $model        = $conf->global->CHATBOT_MODEL ?? 'anthropic/claude-sonnet-4-6';
 
 // Detect API provider from key prefix or model name
-if (strpos($api_key, 'sk-or-') === 0) {
-    $provider    = 'openrouter';
-    $api_url     = 'https://openrouter.ai/api/v1/chat/completions';
-} elseif (strpos($api_key, 'sk-ant-') === 0) {
-    $provider    = 'anthropic';
-    $api_url     = 'https://api.anthropic.com/v1/messages';
-} elseif (strpos($model, 'mistral-') === 0 || strpos($model, 'pixtral-') === 0) {
-    $provider    = 'mistral';
-    $api_url     = 'https://api.mistral.ai/v1/chat/completions';
+if (strpos($model, 'ollama:') === 0) {
+    $provider = 'ollama';
+    $ollama_url = $conf->global->CHATBOT_OLLAMA_URL ?? 'http://localhost:11434';
+    $model = substr($model, 7); // Remove 'ollama:' prefix
 } else {
-    $provider    = 'openai';
-    $api_url     = 'https://api.openai.com/v1/chat/completions';
+    $api_key = $conf->global->CHATBOT_API_KEY ?? '';
+    if (empty($api_key)) {
+        http_response_code(503);
+        die(json_encode(['error' => 'Clé API non configurée. Allez dans Configuration → Chatbot IA → Setup.']));
+    }
+
+    if (strpos($api_key, 'sk-or-') === 0) {
+        $provider    = 'openrouter';
+        $api_url     = 'https://openrouter.ai/api/v1/chat/completions';
+    } elseif (strpos($api_key, 'sk-ant-') === 0) {
+        $provider    = 'anthropic';
+        $api_url     = 'https://api.anthropic.com/v1/messages';
+    } elseif (strpos($model, 'mistral-') === 0 || strpos($model, 'pixtral-') === 0) {
+        $provider    = 'mistral';
+        $api_url     = 'https://api.mistral.ai/v1/chat/completions';
+    } else {
+        $provider    = 'openai';
+        $api_url     = 'https://api.openai.com/v1/chat/completions';
+    }
 }
 
 if (empty($user_message)) die(json_encode(['error' => 'Message vide']));

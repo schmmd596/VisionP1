@@ -25,10 +25,15 @@ class interface_chatbot
     {
         global $conf, $langs, $user;
 
-        // Only show if module enabled, user logged in, and API key set
+        // Only show if module enabled, user logged in, and config set
         if (empty($conf->chatbot->enabled)) return 0;
         if (empty($user->id)) return 0;
-        if (empty($conf->global->CHATBOT_API_KEY)) return 0;
+
+        // Check if using Ollama or API key
+        $model = $conf->global->CHATBOT_MODEL ?? '';
+        $is_ollama = strpos($model, 'ollama:') === 0;
+
+        if (!$is_ollama && empty($conf->global->CHATBOT_API_KEY)) return 0;
         if (!empty($conf->global->CHATBOT_ENABLED) && $conf->global->CHATBOT_ENABLED == '0') return 0;
 
         $url_base = dol_buildpath('/chatbot', 1);
@@ -115,7 +120,7 @@ class interface_chatbot
         </div>
 
         <script>
-            var CHATBOT_AJAX_URL = "'.dol_buildpath('/chatbot/ajax/chat.php', 1).'";
+            var CHATBOT_AJAX_URL = "'.(($is_ollama) ? dol_buildpath('/chatbot/ajax/chat-ollama.php', 1) : dol_buildpath('/chatbot/ajax/chat.php', 1)).'";
             var CHATBOT_TOKEN = "'.newToken().'";
         </script>
         <script src="'.$url_base.'/js/widget.js?v='.time().'"></script>

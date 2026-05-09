@@ -22,18 +22,20 @@ $action = GETPOST('action', 'aZ09');
 
 // ── Save settings ──────────────────────────────────────────
 if ($action === 'update') {
-    $api_key    = GETPOST('CHATBOT_API_KEY', 'alphanohtml');
-    $model      = GETPOST('CHATBOT_MODEL', 'alphanohtml');
-    $enabled    = GETPOST('CHATBOT_ENABLED', 'aZ09') ? '1' : '0';
-    $max_tokens = (int)GETPOST('CHATBOT_MAX_TOKENS', 'int');
+    $api_key       = GETPOST('CHATBOT_API_KEY', 'alphanohtml');
+    $model         = GETPOST('CHATBOT_MODEL', 'alphanohtml');
+    $enabled       = GETPOST('CHATBOT_ENABLED', 'aZ09') ? '1' : '0';
+    $max_tokens    = (int)GETPOST('CHATBOT_MAX_TOKENS', 'int');
+    $ollama_url    = GETPOST('CHATBOT_OLLAMA_URL', 'alphanohtml');
 
     if ($max_tokens < 256)  $max_tokens = 256;
     if ($max_tokens > 8192) $max_tokens = 8192;
 
-    dolibarr_set_const($db, 'CHATBOT_API_KEY',    $api_key,                  'chaine', 0, '', $conf->entity);
-    dolibarr_set_const($db, 'CHATBOT_MODEL',       $model ?: 'anthropic/claude-sonnet-4-6', 'chaine', 0, '', $conf->entity);
-    dolibarr_set_const($db, 'CHATBOT_ENABLED',     $enabled,                  'chaine', 0, '', $conf->entity);
-    dolibarr_set_const($db, 'CHATBOT_MAX_TOKENS',  $max_tokens,               'chaine', 0, '', $conf->entity);
+    dolibarr_set_const($db, 'CHATBOT_API_KEY',      $api_key,                  'chaine', 0, '', $conf->entity);
+    dolibarr_set_const($db, 'CHATBOT_MODEL',        $model ?: 'anthropic/claude-sonnet-4-6', 'chaine', 0, '', $conf->entity);
+    dolibarr_set_const($db, 'CHATBOT_ENABLED',      $enabled,                  'chaine', 0, '', $conf->entity);
+    dolibarr_set_const($db, 'CHATBOT_MAX_TOKENS',   $max_tokens,               'chaine', 0, '', $conf->entity);
+    dolibarr_set_const($db, 'CHATBOT_OLLAMA_URL',   $ollama_url,               'chaine', 0, '', $conf->entity);
 
     setEventMessages("Configuration sauvegardée avec succès.", null, 'mesgs');
     header("Location: setup.php");
@@ -41,10 +43,11 @@ if ($action === 'update') {
 }
 
 // ── Current values ─────────────────────────────────────────
-$current_key    = $conf->global->CHATBOT_API_KEY ?? '';
-$current_model  = $conf->global->CHATBOT_MODEL ?? 'anthropic/claude-haiku-4-5';
+$current_key     = $conf->global->CHATBOT_API_KEY ?? '';
+$current_model   = $conf->global->CHATBOT_MODEL ?? 'anthropic/claude-haiku-4-5';
 $current_enabled = $conf->global->CHATBOT_ENABLED ?? '1';
-$current_tokens = $conf->global->CHATBOT_MAX_TOKENS ?? '2048';
+$current_tokens  = $conf->global->CHATBOT_MAX_TOKENS ?? '2048';
+$current_ollama_url = $conf->global->CHATBOT_OLLAMA_URL ?? 'http://localhost:11434';
 
 // Detect provider from key
 $key_prefix = substr($conf->global->CHATBOT_API_KEY ?? '', 0, 6);
@@ -52,6 +55,12 @@ $detected_provider = ($key_prefix === 'sk-or-') ? 'openrouter' : (($key_prefix =
 
 // ── Available models ───────────────────────────────────────
 $models = [
+    // ✨ OLLAMA - Local & Free Models (Nouveau!)
+    'ollama:mistral'               => '[🆓 Ollama] Mistral 7B (Recommandé - 4GB)',
+    'ollama:neural-chat'           => '[🆓 Ollama] Neural Chat 7B (Meilleur FR/AR - 5GB)',
+    'ollama:tinyllama'             => '[🆓 Ollama] TinyLlama 1.1B (Ultra-léger - 2GB)',
+    'ollama:llama2'                => '[🆓 Ollama] Llama 2 7B (Multi-usage)',
+
     // OpenRouter models
     'anthropic/claude-sonnet-4-6'  => '[OpenRouter] Claude Sonnet 4.6 (Recommandé)',
     'anthropic/claude-opus-4-6'    => '[OpenRouter] Claude Opus 4.6 (Le plus puissant)',
@@ -96,32 +105,16 @@ print load_fiche_titre('Configuration du Tafkir AI', '', 'fa-robot');
 <table class="noborder centpercent">
 <thead>
 <tr class="liste_titre">
-    <th colspan="3">Paramètres de l'API Claude (Anthropic)</th>
+    <th colspan="3">⚙️ Configuration du Modèle d'IA</th>
 </tr>
 </thead>
 <tbody>
 
-<!-- API Key -->
-<tr class="oddeven">
-    <td class="fieldrequired" style="width:30%"><strong>Clé API </strong></td>
-    <td>
-        <input type="password" name="CHATBOT_API_KEY" id="CHATBOT_API_KEY"
-               value="<?php echo htmlspecialchars($current_key); ?>"
-               size="60" class="flat"
-               placeholder="sk-ant-api03-...">
-        <button type="button" onclick="toggleKey()" class="button smallpaddingimp">Afficher</button>
-    </td>
-    <!-- <td>
-        Obtenez votre clé sur
-        <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>
-    </td> -->
-</tr>
-
-<!-- Model -->
+<!-- Model Selection -->
 <tr class="oddeven">
     <td><strong>Modèle</strong></td>
     <td>
-        <select name="CHATBOT_MODEL" class="flat" style="min-width:300px">
+        <select name="CHATBOT_MODEL" id="CHATBOT_MODEL" class="flat" style="min-width:300px" onchange="updateAPISection()">
             <?php foreach ($models as $id => $label): ?>
             <option value="<?php echo $id; ?>" <?php echo ($current_model === $id) ? 'selected' : ''; ?>>
                 <?php echo htmlspecialchars($label); ?>
@@ -129,7 +122,7 @@ print load_fiche_titre('Configuration du Tafkir AI', '', 'fa-robot');
             <?php endforeach; ?>
         </select>
     </td>
-    <td>Le modèle utilisé pour générer les réponses</td>
+    <td>Choisir votre modèle IA</td>
 </tr>
 
 <!-- Max tokens -->
@@ -152,6 +145,54 @@ print load_fiche_titre('Configuration du Tafkir AI', '', 'fa-robot');
         Afficher le widget sur toutes les pages
     </td>
     <td>Désactivez pour masquer le chatbot sans désinstaller le module</td>
+</tr>
+
+</tbody>
+</table>
+
+<br>
+<table class="noborder centpercent" id="api-section">
+<thead>
+<tr class="liste_titre">
+    <th colspan="3">🔑 Paramètres de l'API (Clé API requise)</th>
+</tr>
+</thead>
+<tbody>
+
+<!-- API Key -->
+<tr class="oddeven">
+    <td class="fieldrequired" style="width:30%"><strong>Clé API </strong></td>
+    <td>
+        <input type="password" name="CHATBOT_API_KEY" id="CHATBOT_API_KEY"
+               value="<?php echo htmlspecialchars($current_key); ?>"
+               size="60" class="flat"
+               placeholder="sk-ant-api03-...">
+        <button type="button" onclick="toggleKey()" class="button smallpaddingimp">Afficher</button>
+    </td>
+</tr>
+
+</tbody>
+</table>
+
+<br>
+<table class="noborder centpercent" id="ollama-section" style="display:none;">
+<thead>
+<tr class="liste_titre">
+    <th colspan="3">🆓 Configuration Ollama (Local & Gratuit)</th>
+</tr>
+</thead>
+<tbody>
+
+<!-- Ollama URL -->
+<tr class="oddeven">
+    <td style="width:30%"><strong>URL Ollama</strong></td>
+    <td>
+        <input type="text" name="CHATBOT_OLLAMA_URL" id="CHATBOT_OLLAMA_URL"
+               value="<?php echo htmlspecialchars($current_ollama_url); ?>"
+               size="60" class="flat"
+               placeholder="http://localhost:11434">
+    </td>
+    <td>Adresse de votre serveur Ollama (ex: http://votre-vps.com:11434)</td>
 </tr>
 
 </tbody>
@@ -193,12 +234,35 @@ function toggleKey() {
     el.type = el.type === 'password' ? 'text' : 'password';
 }
 
+function updateAPISection() {
+    var model = document.getElementById('CHATBOT_MODEL').value;
+    var apiSection = document.getElementById('api-section');
+    var ollamaSection = document.getElementById('ollama-section');
+
+    if (model.startsWith('ollama:')) {
+        apiSection.style.display = 'none';
+        ollamaSection.style.display = 'table';
+    } else {
+        apiSection.style.display = 'table';
+        ollamaSection.style.display = 'none';
+    }
+}
+
+// Initialiser au chargement
+document.addEventListener('DOMContentLoaded', function() {
+    updateAPISection();
+});
+
 function testApi() {
     var result = document.getElementById('test-result');
     result.style.color = '#888';
     result.textContent = 'Test en cours...';
 
-    fetch('<?php echo dol_buildpath('/chatbot/ajax/chat.php', 1); ?>', {
+    var endpoint = document.getElementById('CHATBOT_MODEL').value.startsWith('ollama:')
+        ? '<?php echo dol_buildpath('/chatbot/ajax/chat-ollama.php', 1); ?>'
+        : '<?php echo dol_buildpath('/chatbot/ajax/chat.php', 1); ?>';
+
+    fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'Dis juste OK', history: [] })

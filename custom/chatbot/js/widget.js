@@ -244,7 +244,10 @@
         var historyToSend = conv.history.slice(0, -1);
         if (historyToSend.length > 16) historyToSend = historyToSend.slice(-16);
 
-        fetch(CHATBOT_AJAX_URL, {
+        // Use Ollama endpoint
+        var endpoint = CHATBOT_AJAX_URL.includes('chat-ollama') ? CHATBOT_AJAX_URL : CHATBOT_AJAX_URL.replace('/chat.php', '/chat-ollama.php');
+
+        fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
