@@ -40,12 +40,37 @@ if ($action == 'create' && $_SERVER['REQUEST_METHOD'] == 'POST' && $user->rights
 		setEventMessages('Veuillez sélectionner un client', null, 'errors');
 	} else {
 		$bon->entity = $conf->entity;
+		
+		$db->begin();
+		
 		$res = $bon->create($user);
 		if ($res > 0) {
-			setEventMessages('Bon d\'entrée créé avec succès', null, 'mesgs');
-			header("Location: ".$_SERVER["PHP_SELF"]."?id=".$res);
-			exit;
+			// CREATE DRAFT INVOICE
+			require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php';
+			$facture = new Facture($db);
+			$facture->socid = $bon->fk_soc;
+			$facture->type = Facture::TYPE_STANDARD;
+			$facture->date = dol_now();
+			$facture->fk_user_author = $user->id;
+			$facture->entity = $conf->entity;
+			$facture->note_private = "Facture liée au bon d'entrée: " . $bon->ref;
+			
+			// Facture create will automatically create it as draft
+			$idinvoice = $facture->create($user);
+			if ($idinvoice > 0) {
+				$bon->fk_facture = $idinvoice;
+				$bon->update($user);
+				
+				$db->commit();
+				setEventMessages('Bon d\'entrée et facture brouillon créés avec succès', null, 'mesgs');
+				header("Location: ".$_SERVER["PHP_SELF"]."?id=".$res);
+				exit;
+			} else {
+				$db->rollback();
+				setEventMessages('Erreur lors de la création de la facture: ' . $facture->error, null, 'errors');
+			}
 		} else {
+			$db->rollback();
 			setEventMessages('Erreur lors de la création du bon: ' . $bon->error, null, 'errors');
 		}
 	}
@@ -83,9 +108,27 @@ if ($action == 'add_article' && $user->rights->pressing->write && $id > 0) {
 	} elseif (empty($article->fk_entrepot)) {
 		setEventMessages('L\'entrepôt est requis', null, 'errors');
 	} else {
+		if ($bon->fk_facture > 0) {
+			$article->fk_facture = $bon->fk_facture;
+		}
+		
 		$res = $article->create($user);
 		if ($res > 0) {
 			pressing_reception_article($db, $article, $user, $article->qty);
+			
+			// Add line to invoice
+			if ($bon->fk_facture > 0) {
+				require_once DOL_DOCUMENT_ROOT . '/compta/facture/class/facture.class.php';
+				$facture = new Facture($db);
+				if ($facture->fetch($bon->fk_facture) > 0) {
+					$desc = "Article Pressing: " . $article->ref_article;
+					if (!empty($article->longueur) && !empty($article->largeur)) {
+						$desc .= " (" . $article->longueur . "x" . $article->largeur . " cm)";
+					}
+					$facture->addline($desc, $article->price, $article->qty, 0, 0, 0, $article->fk_product, 0, '', '', 0, 0, 0, 'HT');
+				}
+			}
+			
 			setEventMessages('Article ajouté avec succès', null, 'mesgs');
 			header("Location: ".$_SERVER["PHP_SELF"]."?id=".$id);
 			exit;
@@ -693,9 +736,19 @@ if (!$id) {
 	';
 
 	// Show add form and summary only if not delivered
+	$invoice_id = $bon->fk_facture;
+	if (empty($invoice_id) && !empty($articles) && isset($articles[0]->fk_facture)) {
+		$invoice_id = $articles[0]->fk_facture;
+	}
+	$invoice_link = DOL_URL_ROOT . '/compta/facture/card.php?id=' . $invoice_id;
+	if (empty($invoice_id)) {
+		$invoice_link = DOL_URL_ROOT . '/compta/facture/list.php?leftmenu=customers_bills';
+	}
+	
 	if ($bon->status < 2) {
 		// Add article form FIRST (more visible)
 		print '<div style="margin-bottom: 30px; padding: 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 8px; color: white;">';
+		// ... (keep the rest of the form)
 	print '<h3 style="margin-top: 0; margin-bottom: 20px; color: white;"><i class="fas fa-plus-circle"></i> Ajouter un Article au Bon</h3>';
 
 	print '<form method="POST" action="'.$_SERVER["PHP_SELF"].'?id='.$id.'" id="form_add_article">';
@@ -810,22 +863,21 @@ if (!$id) {
 	print '</div>';
 	print '</div>';
 	print '</div>';
+	
+		print '<div style="margin-bottom: 30px; padding: 20px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">';
+		print '<div>';
+		print '<h3 style="margin: 0; color: #856404;"><i class="fas fa-file-invoice"></i> Une facture brouillon est associée à ce bon</h3>';
+		print '<p style="margin: 5px 0 0 0; color: #666;">Les articles ajoutés y sont insérés automatiquement. La facture sera validée lors de la livraison.</p>';
+		print '</div>';
+		print '<a href="' . $invoice_link . '" class="pressing-btn" style="background-color: #ffc107; color: #333; text-decoration: none; padding: 10px 20px;"><i class="fas fa-file-invoice"></i> Voir la Facture (Brouillon)</a>';
+		print '</div>';
+		
 	} else {
 		// Show invoice link if delivered
-		$invoice_id = 0;
-		if (!empty($articles) && isset($articles[0]->fk_facture)) {
-			$invoice_id = $articles[0]->fk_facture;
-		}
-		
-		$invoice_link = DOL_URL_ROOT . '/compta/facture/card.php?id=' . $invoice_id;
-		if (empty($invoice_id)) {
-			$invoice_link = DOL_URL_ROOT . '/compta/facture/list.php?leftmenu=customers_bills';
-		}
-		
 		print '<div style="margin-bottom: 30px; padding: 20px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">';
 		print '<div>';
 		print '<h3 style="margin: 0; color: #28a745;"><i class="fas fa-check-circle"></i> Ce bon d\'entrée a été livré et facturé</h3>';
-		print '<p style="margin: 5px 0 0 0; color: #666;">La facture correspondante a été générée dans le système.</p>';
+		print '<p style="margin: 5px 0 0 0; color: #666;">La facture correspondante a été générée et validée dans le système.</p>';
 		print '</div>';
 		print '<a href="' . $invoice_link . '" class="pressing-btn" style="background-color: #28a745; color: white; text-decoration: none; padding: 10px 20px;"><i class="fas fa-file-invoice"></i> Voir la Facture</a>';
 		print '</div>';

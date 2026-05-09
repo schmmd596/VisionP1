@@ -26,6 +26,7 @@ class PressingBonEntree extends CommonObject
 	public $ref;
 	public $entity;
 	public $fk_soc;
+	public $fk_facture;
 	public $date_entree;
 	public $date_validation;
 	public $status;
@@ -70,11 +71,12 @@ class PressingBonEntree extends CommonObject
 		}
 
 		$sql = "INSERT INTO " . MAIN_DB_PREFIX . $this->table_element . " (";
-		$sql .= "ref, entity, fk_soc, date_entree, status, fk_user_author, note_private";
+		$sql .= "ref, entity, fk_soc, fk_facture, date_entree, status, fk_user_author, note_private";
 		$sql .= ") VALUES (";
 		$sql .= "'" . $this->db->escape($this->ref) . "', ";
 		$sql .= (int) $this->entity . ", ";
 		$sql .= (int) $this->fk_soc . ", ";
+		$sql .= (empty($this->fk_facture) ? "NULL" : (int) $this->fk_facture) . ", ";
 		$sql .= "'" . $this->db->idate($this->date_entree) . "', ";
 		$sql .= (int) $this->status . ", ";
 		$sql .= (int) $user->id . ", ";
@@ -122,6 +124,7 @@ class PressingBonEntree extends CommonObject
 				$this->ref = $obj->ref;
 				$this->entity = $obj->entity;
 				$this->fk_soc = $obj->fk_soc;
+				$this->fk_facture = $obj->fk_facture;
 				$this->date_entree = $this->db->jdate($obj->date_entree);
 				$this->date_validation = $this->db->jdate($obj->date_validation);
 				$this->status = $obj->status;
@@ -156,6 +159,7 @@ class PressingBonEntree extends CommonObject
 		$sql = "UPDATE " . MAIN_DB_PREFIX . $this->table_element . " SET ";
 		$sql .= "ref = '" . $this->db->escape($this->ref) . "', ";
 		$sql .= "fk_soc = " . (int) $this->fk_soc . ", ";
+		$sql .= "fk_facture = " . (empty($this->fk_facture) ? "NULL" : (int) $this->fk_facture) . ", ";
 		$sql .= "date_entree = " . (empty($this->date_entree) ? "NULL" : "'" . $this->db->idate($this->date_entree) . "'") . ", ";
 		$sql .= "status = " . (int) $this->status . ", ";
 		$sql .= "payment_status = " . (int) ($this->payment_status ?? 0) . ", ";

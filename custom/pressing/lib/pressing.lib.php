@@ -102,56 +102,66 @@ function pressing_deliver_bon($db, $bon, $user)
 		return -1;
 	}
 
-	// Create invoice
+	$idinvoice = 0;
 	$facture = new Facture($db);
-	$facture->socid = $bon->fk_soc;
-	$facture->type = Facture::TYPE_STANDARD; // Standard invoice
-	$facture->date = dol_now();
-	$facture->fk_user_author = $user->id;
-	$facture->entity = $conf->entity;
-	// Ref will be auto-generated, no need to set it
-
-	// Create invoice (MUST be done before adding lines)
-	$idinvoice = $facture->create($user);
-	if ($idinvoice < 0) {
-		$error_msg = "Erreur création facture: " . $facture->error;
-		if (!empty($facture->errors) && is_array($facture->errors)) {
-			$error_msg .= " | " . implode(" | ", $facture->errors);
+	
+	if ($bon->fk_facture > 0) {
+		// Invoice already exists, just load it
+		if ($facture->fetch($bon->fk_facture) > 0) {
+			$idinvoice = $bon->fk_facture;
 		}
-		dol_syslog($error_msg, LOG_ERR);
-		// Store error in global for later retrieval
-		$GLOBALS['pressing_last_error'] = $error_msg;
-		$db->rollback();
-		return -1;
-	}
+	} else {
+		// Create invoice for old orders that didn't create it at the beginning
+		$facture->socid = $bon->fk_soc;
+		$facture->type = Facture::TYPE_STANDARD; // Standard invoice
+		$facture->date = dol_now();
+		$facture->fk_user_author = $user->id;
+		$facture->entity = $conf->entity;
 
-	// Add article lines to invoice
-	foreach ($articles as $art) {
-		$desc = "Article Pressing: " . $art->ref_article;
-		if (!empty($art->longueur) && !empty($art->largeur)) {
-			$desc .= " (" . $art->longueur . "x" . $art->largeur . " cm, " . number_format($art->surface, 4) . " m²)";
-		}
-
-		$qty = (empty($art->qty) ? 1 : $art->qty);
-		$price_unit = (empty($art->price) ? 0 : $art->price);
-
-		// Parameters: desc, pu_ht, qty, txtva, txlocaltax1, txlocaltax2, fk_product, remise_percent, date_start, date_end, fk_code_ventilation, info_bits, fk_remise_except, price_base_type
-		$result = $facture->addline($desc, $price_unit, $qty, 0, 0, 0, $art->fk_product, 0, '', '', 0, 0, 0, 'HT');
-		if ($result < 0) {
-			dol_syslog("Erreur addline: " . $facture->error, LOG_ERR);
+		$idinvoice = $facture->create($user);
+		if ($idinvoice < 0) {
+			$error_msg = "Erreur création facture: " . $facture->error;
+			if (!empty($facture->errors) && is_array($facture->errors)) {
+				$error_msg .= " | " . implode(" | ", $facture->errors);
+			}
+			dol_syslog($error_msg, LOG_ERR);
+			$GLOBALS['pressing_last_error'] = $error_msg;
 			$db->rollback();
 			return -1;
+		}
+		
+		$bon->fk_facture = $idinvoice;
+		$bon->update($user);
+
+		// Add article lines to invoice
+		foreach ($articles as $art) {
+			$desc = "Article Pressing: " . $art->ref_article;
+			if (!empty($art->longueur) && !empty($art->largeur)) {
+				$desc .= " (" . $art->longueur . "x" . $art->largeur . " cm)";
+			}
+
+			$qty = (empty($art->qty) ? 1 : $art->qty);
+			$price_unit = (empty($art->price) ? 0 : $art->price);
+
+			$result = $facture->addline($desc, $price_unit, $qty, 0, 0, 0, $art->fk_product, 0, '', '', 0, 0, 0, 'HT');
+			if ($result < 0) {
+				dol_syslog("Erreur addline: " . $facture->error, LOG_ERR);
+				$db->rollback();
+				return -1;
+			}
 		}
 	}
 
 	// Validate the invoice so it can be paid
-	$result = $facture->validate($user);
-	if ($result < 0) {
-		$error_msg = "Erreur validation facture: " . $facture->error;
-		dol_syslog($error_msg, LOG_ERR);
-		$GLOBALS['pressing_last_error'] = $error_msg;
-		$db->rollback();
-		return -1;
+	if ($facture->status == Facture::STATUS_DRAFT) {
+		$result = $facture->validate($user);
+		if ($result < 0) {
+			$error_msg = "Erreur validation facture: " . $facture->error;
+			dol_syslog($error_msg, LOG_ERR);
+			$GLOBALS['pressing_last_error'] = $error_msg;
+			$db->rollback();
+			return -1;
+		}
 	}
 
 	// Create stock movements and update articles
