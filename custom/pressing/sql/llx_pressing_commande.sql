@@ -1,0 +1,26 @@
+-- Create table for pressing orders (main entity)
+CREATE TABLE IF NOT EXISTS llx_pressing_commande (
+    rowid                   INTEGER AUTO_INCREMENT PRIMARY KEY,
+    ref                     VARCHAR(30) NOT NULL UNIQUE,
+    entity                  INTEGER DEFAULT 1 NOT NULL,
+    fk_soc                  INTEGER NOT NULL,
+    fk_facture              INTEGER DEFAULT NULL,
+    date_depot              DATETIME,
+    date_promesse           DATE,
+    date_livraison          DATETIME,
+    fk_user_author          INTEGER,
+    fk_statut               TINYINT DEFAULT 0,
+    montant_ht              DOUBLE(24,8) DEFAULT 0,
+    montant_ttc             DOUBLE(24,8) DEFAULT 0,
+    note_public             TEXT,
+    note_private            TEXT,
+    datec                   DATETIME,
+    tms                     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (fk_soc) REFERENCES llx_societe(rowid) ON DELETE RESTRICT,
+    FOREIGN KEY (fk_facture) REFERENCES llx_facture(rowid) ON DELETE SET NULL,
+    FOREIGN KEY (fk_user_author) REFERENCES llx_user(rowid) ON DELETE SET NULL,
+    INDEX idx_ref (ref),
+    INDEX idx_soc (fk_soc),
+    INDEX idx_facture (fk_facture),
+    INDEX idx_statut (fk_statut)
+) ENGINE=innodb DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

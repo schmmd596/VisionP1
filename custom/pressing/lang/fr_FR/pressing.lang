@@ -1,0 +1,86 @@
+# Pressing module language file (French)
+
+# Menu
+Pressing=Pressing
+PresssingCommandes=Commandes de pressing
+PresssingNouvelle=Nouvelle commande
+PresssingEntrepots=Entrepôts
+
+# Card
+PresssingCard=Fiche commande pressing
+ShowPressing=Afficher la commande pressing
+CreatePressing=Créer une commande pressing
+EditPressing=Modifier une commande pressing
+DeletePressing=Supprimer une commande pressing
+ConfirmDeletePressing=Êtes-vous sûr de vouloir supprimer cette commande pressing ?
+
+# Fields
+Ref=Référence
+Client=Client
+DateDepot=Date de dépôt
+DatePromesse=Date promise
+DateLivraison=Date de livraison
+Statut=Statut
+MontantHT=Montant HT
+MontantTTC=Montant TTC
+NotePublic=Note publique
+NotePrivate=Note privée
+
+# Articles/Items
+Articles=Articles/Vêtements
+AddArticle=Ajouter un article
+Type=Type
+Couleur=Couleur
+Longueur=Longueur (cm)
+Largeur=Largeur (cm)
+Description=Description
+PrixUnitaire=Prix unitaire (€)
+Entrepot=Entrepôt
+StatutArticle=Statut article
+
+# Status
+Status=Statut
+StatusDraft=Brouillon
+StatusReceived=Reçu
+StatusInProgress=En cours de traitement
+StatusDone=Prêt à livrer
+StatusDelivered=Livré
+
+# Actions
+Validate=Valider
+ValidateCommand=Valider la commande
+MarkInProgress=Marquer en cours
+MarkReady=Marquer prêt
+LivrerPressing=Livrer commande pressing
+PressingItemsNotReady=Des articles ne sont pas prêts à être livrés
+Deliver=Livrer
+Cancel=Annuler
+Delete=Supprimer
+
+# Labels
+EnAttente=En attente de lavage
+EnCours=En cours de traitement
+Pret=Prêt à livrer
+Livre=Livré
+
+# Messages
+PresssingCreated=Commande pressing créée avec succès
+PresssingUpdated=Commande pressing mise à jour
+PresssingDeleted=Commande pressing supprimée
+PresssingValidated=Commande pressing validée
+PressingLivre=Commande pressing livrée avec succès
+
+# Errors
+ErrorSelectClient=Sélectionnez un client
+ErrorMinArticles=Ajoutez au moins un article
+ErrorMissingWarehouse=Entrepôt requis pour cet article
+ErrorArticleNotReady=Article non prêt: %s
+
+# Warehouses
+ListWarehouses=Liste des entrepôts
+WarehouseStock=Stock en entrepôt
+ItemsInWarehouse=Articles dans l'entrepôt
+PendingItems=En attente
+InProgressItems=En cours
+ReadyItems=Prêts
+DeliveredItems=Livrés

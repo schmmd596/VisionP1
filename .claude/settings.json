@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"/c/xampp/mysql/bin/mysql.exe\" -u root visionp)",
+      "Bash(\"/c/xampp/mysql/bin/mysql.exe\" -u root visionp -e \"SHOW TABLES LIKE 'llx_exportation%';\")"
+    ]
+  }
+}

@@ -305,8 +305,91 @@ if (empty($entrepots)) {
 	// ============================================
 	print '<h2 style="margin-bottom: 20px; margin-top: 40px;"><i class="fas fa-list"></i> Tous les Articles en Stock</h2>';
 
-	$sql_art = "SELECT rowid FROM " . MAIN_DB_PREFIX . "pressing_article ORDER BY date_reception DESC";
+	$filter_status = GETPOST('filter_status', 'int');
+	if ($filter_status == '') $filter_status = -1;
+	$limit = GETPOST('limit', 'int');
+	if ($limit <= 0) $limit = 20;
+	$page = GETPOST('page', 'int');
+	if ($page < 0) $page = 0;
+	
+	$offset = $limit * $page;
+
+	$sql_art = "SELECT rowid FROM " . MAIN_DB_PREFIX . "pressing_article";
+	$sql_count = "SELECT COUNT(rowid) as nb FROM " . MAIN_DB_PREFIX . "pressing_article";
+	if ($filter_status >= 0) {
+		$sql_art .= " WHERE status = " . $filter_status;
+		$sql_count .= " WHERE status = " . $filter_status;
+	}
+	$sql_art .= " ORDER BY date_reception DESC";
+	
+	$resql_count = $db->query($sql_count);
+	$total_records = 0;
+	if ($resql_count) {
+		$obj_count = $db->fetch_object($resql_count);
+		if ($obj_count) $total_records = $obj_count->nb;
+	}
+
+	$sql_art .= " LIMIT " . $limit . " OFFSET " . $offset;
 	$resql_art = $db->query($sql_art);
+
+	// FILTER BAR
+	print '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">';
+	
+	print '<form method="GET" action="'.$_SERVER["PHP_SELF"].'" style="display: flex; gap: 20px; align-items: center; margin: 0;">';
+	$param = '';
+	if (GETPOST('idmenu')) { print '<input type="hidden" name="idmenu" value="'.GETPOST('idmenu', 'aZ09').'">'; $param .= '&idmenu='.GETPOST('idmenu', 'aZ09'); }
+	if (GETPOST('mainmenu')) { print '<input type="hidden" name="mainmenu" value="'.GETPOST('mainmenu', 'aZ09').'">'; $param .= '&mainmenu='.GETPOST('mainmenu', 'aZ09'); }
+	if (GETPOST('leftmenu')) { print '<input type="hidden" name="leftmenu" value="'.GETPOST('leftmenu', 'aZ09').'">'; $param .= '&leftmenu='.GETPOST('leftmenu', 'aZ09'); }
+
+	print '<input type="hidden" name="page" value="0">'; // Reset page on filter change
+
+	print '<div style="display: flex; align-items: center; gap: 8px;">';
+	print '<label style="font-weight: 600;"><i class="fas fa-filter"></i> Statut :</label>';
+	print '<select name="filter_status" onchange="this.form.submit()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">';
+	print '<option value="-1"' . ($filter_status == -1 ? ' selected' : '') . '>Tous</option>';
+	print '<option value="0"' . ($filter_status == 0 ? ' selected' : '') . '>En attente</option>';
+	print '<option value="1"' . ($filter_status == 1 ? ' selected' : '') . '>En traitement</option>';
+	print '<option value="2"' . ($filter_status == 2 ? ' selected' : '') . '>Prêt à livrer</option>';
+	print '<option value="3"' . ($filter_status == 3 ? ' selected' : '') . '>Livré</option>';
+	print '</select>';
+	print '</div>';
+
+	print '<div style="display: flex; align-items: center; gap: 8px;">';
+	print '<label style="font-weight: 600;"><i class="fas fa-list-ol"></i> Lignes :</label>';
+	$limits = array(20, 50, 100, 500, 1000);
+	print '<select name="limit" onchange="this.form.submit()" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">';
+	foreach ($limits as $l) {
+		print '<option value="'.$l.'"' . ($limit == $l ? ' selected' : '') . '>'.$l.'</option>';
+	}
+	print '</select>';
+	print '</div>';
+
+	print '</form>';
+
+	// Pagination
+	print '<div style="display: flex; gap: 5px; align-items: center;">';
+	$max_page = floor(($total_records - 1) / $limit);
+	if ($max_page < 0) $max_page = 0;
+	
+	$filter_params = $param . '&limit=' . $limit . '&filter_status=' . $filter_status;
+
+	if ($page > 0) {
+		print '<a href="'.$_SERVER["PHP_SELF"].'?page='.($page-1).$filter_params.'" style="background-color: #007bff; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none;"><i class="fas fa-chevron-left"></i></a>';
+	} else {
+		print '<span style="background-color: #ccc; color: white; padding: 8px 12px; border-radius: 4px;"><i class="fas fa-chevron-left"></i></span>';
+	}
+	
+	print '<span style="font-weight: 600; padding: 0 10px;">Page '.($page+1).' / '.($max_page+1).'</span>';
+
+	if ($page < $max_page) {
+		print '<a href="'.$_SERVER["PHP_SELF"].'?page='.($page+1).$filter_params.'" style="background-color: #007bff; color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none;"><i class="fas fa-chevron-right"></i></a>';
+	} else {
+		print '<span style="background-color: #ccc; color: white; padding: 8px 12px; border-radius: 4px;"><i class="fas fa-chevron-right"></i></span>';
+	}
+	print '</div>';
+
+	print '</div>';
+
 	if ($resql_art && $db->num_rows($resql_art) > 0) {
 		print '<table class="articles-table">';
 		print '<thead><tr>';

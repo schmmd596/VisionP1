@@ -1,0 +1,270 @@
+# Module Exportation - Arabic (ar_SA) Translation
+# الترجمة العربية - وحدة التصدير والاستيراد
+
+ExportationDescription=إدارة متقدمة للاستيراد والتصدير، CBM، والحسابات
+
+# ─── Navigation / التنقل
+SellerDashboard=لوحة التحكم
+SupplierInvoice=ملف الشراء
+ShipmentCard=الشحنات والحاويات
+EmployeeDashboard=مساحتي
+CustomerDashboard=لوحة العميل
+Reports=التقارير
+AdminEmployees=إدارة الموظفين
+UnifiedAccount=المورد الداخلي
+ExternalSupplier=المورد الخارجي
+PartnerDashboard=الشركاء
+
+# ─── General / عام
+Back=رجوع
+Save=حفظ
+Cancel=إلغاء
+Delete=حذف
+Edit=تعديل
+Add=إضافة
+Validate=تحقق / موافقة
+Create=إنشاء
+Search=بحث
+Filter=تصفية
+Print=طباعة
+Actions=إجراءات
+Total=المجموع
+Status=الحالة
+Date=التاريخ
+Reference=المرجع
+Amount=المبلغ
+Currency=العملة
+Rate=السعر
+Note=ملاحظة
+Description=الوصف
+Type=النوع
+Bank=البنك
+Details=التفاصيل
+Confirm=تأكيد
+Yes=نعم
+No=لا
+
+# ─── Currencies / العملات
+MRU=أوقية
+RMB=يوان صيني
+EUR=يورو
+USD=دولار أمريكي
+
+# ─── supplier_invoice.php / ملف الشراء
+PurchaseFile=ملف الشراء - فاتورة استيراد
+ExternalSupplierLabel=المورد الخارجي
+NewSupplier=مورد جديد
+SupplierName=اسم المورد *
+DateLabel=التاريخ *
+ProformaRef=رفرنس Pro-forma
+SourceCurrency=عملة المصدر
+RateToMRU=السعر → أوقية
+CreateFile=إنشاء الملف
+RecentFiles=الملفات الأخيرة
+MassPayment=دفع جماعي
+Draft=مسودة
+Validated=موثق
+Paid=مدفوع
+Abandoned=ملغى
+NoFiles=لا توجد ملفات
+
+# Invoice Detail / تفاصيل الفاتورة
+InvoiceDetail=تفاصيل الفاتورة
+Supplier=المورد
+CurrencyAndRate=العملة والسعر
+InvoicedTotal=المجموع المفوتر
+EditInvoice=تعديل الفاتورة
+FinishEditing=إنهاء التعديل
+PrintPDF=طباعة PDF
+
+# Products / المنتجات
+Products=المنتجات
+NewProduct=منتج جديد
+ProductLabel=التسمية *
+ProductRef=المرجع
+CBMPerCarton=CBM/كرتونة
+UnitsPerCarton=وحدة/كرتة
+NumberOfCartons=عدد الكراتين
+Quantity=الكمية
+UnitPrice=سعر الوحدة
+LineTotal=المجموع
+Shipping=شحن
+AutoQty=تلقائي
+Shipped=مشحون
+NotYetShipped=لم يُشحن بعد
+PartiallyShipped=شُحن جزئياً
+NotApplicable=غير مطبق
+
+# Expenses / المصاريف
+Expenses=المصاريف
+ExpenseForSupplier=للمورد (في الفاتورة)
+ExpenseForUs=لنا (مدين من البنك)
+ExpenseDescription=للمورد (يُضاف للفاتورة) أو لنا (يُخصم عند التحقق)
+TotalExpenses=مجموع المصاريف
+TotalLocal=المجموع (أوقية)
+ExpenseTarget=النوع
+SelectBank=-- البنك --
+
+# Payments / المدفوعات
+Payments=المدفوعات
+EachPaymentHasRate=لكل دفعة سعر صرف خاص بها
+Remaining=المتبقي
+Settled=تم التسوية
+PaymentDate=تاريخ الدفع
+PaymentAmount=المبلغ
+PaymentNote=ملاحظة...
+ValidateToAddPayments=يرجى التحقق من الفاتورة لإضافة المدفوعات
+
+# Summary / الملخص
+SummaryBar=ملخص الفاتورة
+TotalProducts=مجموع المنتجات
+TotalExpensesForUs=المصاريف (لنا)
+NotIncludedInInvoice=غير مشمول في الفاتورة
+InvoiceTotal=مجموع الفاتورة
+TotalPaid=المدفوع
+TotalRemaining=المتبقي
+
+# ─── shipment_card.php / بطاقة الشحنة
+ShipmentTitle=الشحنات والحاويات
+Shipments=الشحنات
+Containers=الحاويات
+NewShipment=شحنة جديدة
+ShipmentRef=مرجع الشحنة
+DepartureDate=تاريخ المغادرة
+ArrivalDate=تاريخ الوصول
+ContainerNumber=رقم الحاوية
+ShipmentStatus=حالة الشحنة
+InTransit=في الطريق
+Delivered=تم التسليم
+AtPort=في الميناء
+Products2=المنتجات
+TotalCBM=مجموع CBM
+TotalCartons=مجموع الكراتين
+
+# ─── employee_dashboard.php / لوحة الموظف
+EmployeeDashboardTitle=مساحتي
+MyTasks=مهامي
+MySales=مبيعاتي
+MyPurchases=مشترياتي
+MyExpenses=مصاريفي
+Salary=الراتب
+Advance=سلفة
+Balance=الرصيد
+Month=الشهر
+TotalSales=مجموع المبيعات
+TotalPurchases=مجموع المشتريات
+Commission=العمولة
+NetSalary=الراتب الصافي
+
+# ─── admin_employees.php / إدارة الموظفين
+EmployeesManagement=إدارة الموظفين
+Employee=موظف
+NewEmployee=موظف جديد
+EmployeeName=اسم الموظف
+EmployeeRole=الدور
+FixedSalary=الراتب الثابت
+CommissionRate=نسبة العمولة
+HireDate=تاريخ التوظيف
+SalaryHistory=سجل الرواتب
+AddSalary=إضافة راتب
+AddAdvance=إضافة سلفة
+SalaryMonth=شهر الراتب
+SalaryAmount=مبلغ الراتب
+AdvanceAmount=مبلغ السلفة
+PaymentDate2=تاريخ الدفع
+
+# ─── partner_dashboard.php / لوحة الشركاء
+Partners=الشركاء
+PartnerName=اسم الشريك
+SharePercent=نسبة الحصة ٪
+TotalProfit=مجموع الأرباح
+ProfitShare=حصة الأرباح
+Distributions=التوزيعات
+AddDistribution=إضافة توزيع
+DistributionDate=تاريخ التوزيع
+DistributionAmount=مبلغ التوزيع
+
+# ─── reports.php / التقارير
+ReportsTitle=التقارير والإحصاءات
+PeriodFrom=من
+PeriodTo=إلى
+GenerateReport=إنشاء التقرير
+TotalRevenue=إجمالي الإيرادات
+TotalCost=إجمالي التكاليف
+GrossProfit=الربح الإجمالي
+NetProfit=صافي الربح
+MarginPercent=نسبة الهامش ٪
+TopProducts=أفضل المنتجات
+TopSuppliers=أفضل الموردين
+TopClients=أفضل العملاء
+GeneratedOn=أُنشئ بتاريخ
+By=بواسطة
+
+# ─── external_supplier.php / المورد الخارجي
+ExternalSuppliers=الموردون الخارجيون
+ExternalSupplierDetail=تفاصيل المورد الخارجي
+ContactInfo=معلومات الاتصال
+Country=البلد
+TotalOrders=مجموع الطلبات
+TotalAmountDue=المبلغ المستحق
+BalanceStatus=حالة الرصيد
+
+# ─── unified_account.php / الحساب الموحد
+UnifiedAccountTitle=المورد الداخلي - الحساب الموحد
+AccountJournal=سجل الحساب
+Debit=مدين
+Credit=دائن
+RunningBalance=الرصيد المتراكم
+OperationType=نوع العملية
+Purchase=شراء
+Payment=دفع
+Adjustment=تسوية
+
+# ─── customer_dashboard.php / لوحة العميل
+CustomerDashboardTitle=لوحة العميل
+Client=العميل
+ClientName=اسم العميل
+OrderHistory=سجل الطلبات
+TotalPurchasedAmount=إجمالي المشتريات
+OutstandingBalance=الرصيد المتبقي
+LastOrder=آخر طلب
+ViewInvoices=عرض الفواتير
+
+# ─── seller_dashboard.php / لوحة البائع
+SellerDashboardTitle=لوحة التحكم الرئيسية
+Overview=نظرة عامة
+RecentActivity=النشاط الأخير
+PendingInvoices=الفواتير المعلقة
+PendingShipments=الشحنات المعلقة
+QuickStats=إحصائيات سريعة
+MonthlyRevenue=الإيرادات الشهرية
+MonthlyCost=التكاليف الشهرية
+MonthlyProfit=الأرباح الشهرية
+
+# ─── print_invoice.php / طباعة الفاتورة
+PrintInvoice=طباعة الفاتورة
+InvoiceNumber=رقم الفاتورة
+InvoiceDate=تاريخ الفاتورة
+BilledTo=فاتورة إلى
+ProductDescription=وصف المنتج
+Subtotal=المجموع الفرعي
+Tax=الضريبة
+GrandTotal=المجموع الكلي
+PaymentTerms=شروط الدفع
+ThankYou=شكراً لثقتكم
+
+# ─── Common errors / أخطاء شائعة
+ErrorSelectSupplier=يرجى اختيار مورد
+ErrorSupplierNotFound=المورد غير موجود
+ErrorInvoiceNotFound=الفاتورة غير موجودة
+ErrorCannotPayDraft=لا يمكن الدفع: الفاتورة في مسودة. يرجى التحقق أولاً
+ErrorCreating=خطأ في الإنشاء
+ErrorDeleting=خطأ في الحذف
+SuccessCreated=تم الإنشاء بنجاح
+SuccessDeleted=تم الحذف بنجاح
+SuccessValidated=تم التحقق بنجاح
+ConfirmDelete=هل تريد حقاً الحذف؟
+ConfirmDeleteProduct=هل تريد حقاً حذف هذا المنتج من الفاتورة؟
+ConfirmDeleteExpense=هل تريد حذف هذا المصروف؟
+ConfirmDeletePayment=حذف؟
+NoData=لا توجد بيانات

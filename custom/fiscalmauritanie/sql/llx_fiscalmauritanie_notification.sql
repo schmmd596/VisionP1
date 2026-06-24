@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS llx_fiscalmauritanie_notification (
+  rowid integer AUTO_INCREMENT PRIMARY KEY,
+  entity integer DEFAULT 1 NOT NULL,
+  fk_declaration integer DEFAULT NULL,
+  fk_user integer DEFAULT NULL,
+  tax_type varchar(50) DEFAULT NULL,
+  channel varchar(50) DEFAULT 'internal',
+  subject varchar(255) DEFAULT NULL,
+  message text,
+  notification_date datetime DEFAULT NULL,
+  status integer DEFAULT 0,
+  error_message text,
+  date_creation datetime NOT NULL,
+  tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  fk_user_creat integer DEFAULT NULL,
+  fk_user_modif integer DEFAULT NULL,
+  KEY idx_fiscalmauritanie_notification_decl (fk_declaration),
+  KEY idx_fiscalmauritanie_notification_user (fk_user),
+  KEY idx_fiscalmauritanie_notification_date (notification_date),
+  KEY idx_fiscalmauritanie_notification_status (status)
+) ENGINE=innodb;

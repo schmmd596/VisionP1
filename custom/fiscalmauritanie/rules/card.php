@@ -1,0 +1,50 @@
+<?php
+$res = 0;
+if (!$res && file_exists('../../main.inc.php')) $res = @include '../../main.inc.php';
+if (!$res && file_exists('../../../main.inc.php')) $res = @include '../../../main.inc.php';
+if (!$res) die('Include of main fails');
+require_once DOL_DOCUMENT_ROOT.'/custom/fiscalmauritanie/class/fiscalmauritanierule.class.php';
+$langs->loadLangs(array('fiscalmauritanie@fiscalmauritanie'));
+if (!$user->rights->fiscalmauritanie->setup->admin) accessforbidden();
+$id = GETPOSTINT('id'); $action = GETPOST('action', 'aZ09');
+$object = new FiscalMauritanieRule($db); if ($id > 0) $object->fetch($id);
+if ($action === 'add' || $action === 'update') {
+    $object->code = GETPOST('code', 'alpha');
+    $object->label = GETPOST('label', 'alphanohtml');
+    $object->tax_type = GETPOST('tax_type', 'alpha');
+    $object->rate = price2num(GETPOST('rate', 'alpha'));
+    $object->minimum_amount = price2num(GETPOST('minimum_amount', 'alpha'));
+    $object->maximum_amount = GETPOST('maximum_amount', 'alpha') === '' ? null : price2num(GETPOST('maximum_amount', 'alpha'));
+    $object->ceiling_amount = GETPOST('ceiling_amount', 'alpha') === '' ? null : price2num(GETPOST('ceiling_amount', 'alpha'));
+    $object->frequency = GETPOST('frequency', 'alpha');
+    $object->calculation_method = GETPOST('calculation_method', 'alpha');
+    $object->declared_percentage = price2num(GETPOST('declared_percentage', 'alpha'));
+    $object->due_day = GETPOSTINT('due_day');
+    $object->due_month = GETPOSTINT('due_month');
+    $object->active = GETPOSTINT('active');
+    $object->note = GETPOST('note', 'restricthtml');
+    $res = ($action === 'add') ? $object->create($user) : $object->update($user);
+    if ($res > 0) { header('Location: list.php'); exit; }
+    setEventMessages($object->error, null, 'errors');
+}
+llxHeader('', $langs->trans('TaxRules'));
+print load_fiche_titre($action === 'create' ? 'Nouvelle règle fiscale' : 'Règle fiscale', '', 'generic');
+print '<form method="POST"><input type="hidden" name="token" value="'.newToken().'"><input type="hidden" name="action" value="'.($action==='create'?'add':'update').'">';
+if ($id > 0) print '<input type="hidden" name="id" value="'.(int)$id.'">';
+print '<table class="border centpercent">';
+print '<tr><td class="titlefield">Code</td><td><input name="code" value="'.dol_escape_htmltag($object->code).'"></td></tr>';
+print '<tr><td>Libellé</td><td><input name="label" class="minwidth300" value="'.dol_escape_htmltag($object->label).'"></td></tr>';
+print '<tr><td>Type</td><td><select name="tax_type">'; foreach (array('ITS','CNSS','CNAM','IS','TA','PATENTE','IMF','IMF_HONORAIRES') as $type) print '<option value="'.$type.'"'.($object->tax_type===$type?' selected':'').'>'.$type.'</option>'; print '</select></td></tr>';
+print '<tr><td>Taux (%)</td><td><input name="rate" value="'.price($object->rate).'" class="right"></td></tr>';
+print '<tr><td>Minimum</td><td><input name="minimum_amount" value="'.price($object->minimum_amount).'" class="right"></td></tr>';
+print '<tr><td>Maximum</td><td><input name="maximum_amount" value="'.price($object->maximum_amount).'" class="right"></td></tr>';
+print '<tr><td>Plafond base</td><td><input name="ceiling_amount" value="'.price($object->ceiling_amount).'" class="right"></td></tr>';
+print '<tr><td>Fréquence</td><td><select name="frequency"><option value="monthly">Mensuelle</option><option value="quarterly"'.($object->frequency==='quarterly'?' selected':'').'>Trimestrielle</option><option value="annual"'.($object->frequency==='annual'?' selected':'').'>Annuelle</option></select></td></tr>';
+print '<tr><td>Méthode</td><td><select name="calculation_method">'; foreach (array('rate','progressive','profit_rate','minimum_compare','withholding','manual') as $m) print '<option value="'.$m.'"'.($object->calculation_method===$m?' selected':'').'>'.$m.'</option>'; print '</select></td></tr>';
+print '<tr><td>Pourcentage déclaré par défaut</td><td><input name="declared_percentage" value="'.price($object->declared_percentage ?: 100).'" class="right"> %</td></tr>';
+print '<tr><td>Jour échéance</td><td><input name="due_day" value="'.dol_escape_htmltag($object->due_day).'" class="right"></td></tr>';
+print '<tr><td>Mois échéance</td><td><input name="due_month" value="'.dol_escape_htmltag($object->due_month).'" class="right"></td></tr>';
+print '<tr><td>Actif</td><td><input type="checkbox" name="active" value="1"'.($object->active || $action==='create'?' checked':'').'></td></tr>';
+print '<tr><td>Note</td><td><textarea name="note" rows="3">'.dol_escape_htmltag($object->note).'</textarea></td></tr>';
+print '</table><div class="center"><input class="button" type="submit" value="Enregistrer"></div></form>';
+llxFooter(); $db->close();
