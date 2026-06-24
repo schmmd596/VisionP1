@@ -1,0 +1,246 @@
+# Module Exportation - French (fr_FR) Translation
+# Traduction française - Module d'Exportation/Importation
+
+ExportationDescription=Gestion avancée de l'import/export, CBM, compensation et profiling client
+
+# ─── Navigation
+SellerDashboard=Tableau de bord
+SupplierInvoice=Dossier d'achat
+ShipmentCard=Imports & Conteneurs
+EmployeeDashboard=Mon Espace
+CustomerDashboard=Dashboard Client
+Reports=Rapports
+AdminEmployees=Gestion Employés
+UnifiedAccount=Fournisseur Interne
+ExternalSupplier=Fournisseur Externe
+PartnerDashboard=Partenaires
+
+# ─── Général
+Back=Retour
+Save=Enregistrer
+Cancel=Annuler
+Delete=Supprimer
+Edit=Modifier
+Add=Ajouter
+Validate=Valider
+Create=Créer
+Search=Rechercher
+Filter=Filtrer
+Print=Imprimer
+Actions=Actions
+Total=Total
+Status=Statut
+Date=Date
+Reference=Référence
+Amount=Montant
+Currency=Devise
+Rate=Taux
+Note=Note
+Description=Description
+Type=Type
+Bank=Banque
+Details=Détails
+Confirm=Confirmer
+Yes=Oui
+No=Non
+
+# ─── Devises
+MRU=Ouguiya
+RMB=Yuan Chinois
+EUR=Euro
+USD=Dollar américain
+
+# ─── supplier_invoice.php
+PurchaseFile=Dossier d'Achat — Facture Import
+ExternalSupplierLabel=Fournisseur Externe
+NewSupplier=Nouveau Fournisseur
+SupplierName=Nom *
+DateLabel=Date *
+ProformaRef=Réf. Pro-forma
+SourceCurrency=Devise Source
+RateToMRU=Taux → MRU
+CreateFile=Créer
+RecentFiles=Dossiers Récents
+MassPayment=Paiement en Masse
+Draft=Brouillon
+Validated=Validée
+Paid=Payée
+Abandoned=Abandonnée
+NoFiles=Aucun dossier
+
+InvoiceDetail=Détail Facture
+Supplier=Fournisseur
+CurrencyAndRate=Devise & Taux
+InvoicedTotal=Total facturé
+EditInvoice=Modifier la facture
+FinishEditing=Terminer les modifications
+PrintPDF=Imprimer PDF
+
+# Products
+Products=Produits
+NewProduct=Nouveau Produit
+ProductLabel=Libellé *
+ProductRef=Réf
+CBMPerCarton=CBM/Crt
+UnitsPerCarton=U/Crt
+NumberOfCartons=Nb Crt
+Quantity=Qté
+UnitPrice=P.U
+LineTotal=Total
+Shipping=Expédition
+AutoQty=auto
+Shipped=Expédié
+NotYetShipped=En attente
+PartiallyShipped=Partiel
+NotApplicable=N/A
+
+# Dépenses (Factures Import)
+Expenses=Dépenses
+ExpenseForSupplier=Fournisseur
+ExpenseForUs=Pour nous
+ExpenseDescription=Pour fournisseur (dans la facture) ou pour nous (décaissé banque)
+TotalExpenses=Total Dépenses
+TotalLocal=Total (MRU)
+ExpenseTarget=Type
+SelectBank=-- Banque --
+
+# Dépenses (Nouvelle Section)
+ExpensesManagement=Gestion des Dépenses
+MyExpenses=Mes Dépenses
+ExpenseCreated=Dépense créée avec succès
+ExpenseSubmitted=Dépense soumise pour validation
+ExpenseValidated=Dépense validée
+ExpenseRefused=Dépense refusée
+PendingExpenses=Dépenses en attente
+ValidatedExpenses=Dépenses validées
+RefusedExpenses=Dépenses refusées
+ExpenseAmount=Montant
+ExpenseDate=Date de la dépense
+ExpenseCategory=Catégorie
+ExpenseStatus=Statut
+ExpenseActions=Actions
+CreateExpense=Créer une dépense
+AddExpense=Ajouter une dépense
+ValidateExpense=Valider
+RefuseExpense=Refuser
+SubmitExpense=Soumettre
+PendingStatus=En attente
+ValidatedStatus=Validée
+RefusedStatus=Refusée
+Transport=Transport
+Meals=Repas
+Office=Bureau
+OtherExpense=Autre
+NoExpense=Aucune dépense
+ValidatedTotal=Total dépenses validées
+
+# Paiements
+Payments=Paiements
+EachPaymentHasRate=Chaque paiement a son propre taux de change
+Remaining=Reste
+Settled=Soldé
+PaymentDate=Date
+PaymentAmount=Montant
+PaymentNote=Note...
+ValidateToAddPayments=Validez la facture pour pouvoir ajouter des paiements
+
+# Résumé
+SummaryBar=Résumé Facture
+TotalProducts=Total Produits
+TotalExpensesForUs=Dépenses (Pour NOUS)
+NotIncludedInInvoice=Non inclus dans la facture
+InvoiceTotal=TOTAL FACTURE
+TotalPaid=PAYÉ
+TotalRemaining=RESTE
+
+# ─── shipment_card.php
+ShipmentTitle=Imports & Conteneurs
+Shipments=Expéditions
+Containers=Conteneurs
+NewShipment=Nouvelle Expédition
+ShipmentRef=Référence
+DepartureDate=Date Départ
+ArrivalDate=Date Arrivée
+ContainerNumber=N° Conteneur
+ShipmentStatus=Statut
+InTransit=En Transit
+Delivered=Livré
+AtPort=Au Port
+Products2=Produits
+TotalCBM=Total CBM
+TotalCartons=Total Cartons
+
+# ─── employee_dashboard.php
+EmployeeDashboardTitle=Mon Espace Employé
+MyTasks=Mes Tâches
+MySales=Mes Ventes
+MyPurchases=Mes Achats
+MyExpenses=Mes Dépenses
+Salary=Salaire
+Advance=Avance
+Balance=Solde
+Month=Mois
+TotalSales=Total Ventes
+TotalPurchases=Total Achats
+Commission=Commission
+NetSalary=Salaire Net
+
+# ─── admin_employees.php
+EmployeesManagement=Gestion des Employés
+Employee=Employé
+NewEmployee=Nouvel Employé
+EmployeeName=Nom de l'employé
+EmployeeRole=Rôle
+FixedSalary=Salaire fixe
+CommissionRate=Taux commission
+HireDate=Date embauche
+SalaryHistory=Historique salaires
+AddSalary=Ajouter Salaire
+AddAdvance=Ajouter Avance
+SalaryMonth=Mois
+SalaryAmount=Montant Salaire
+AdvanceAmount=Montant Avance
+PaymentDate2=Date paiement
+
+# ─── partner_dashboard.php
+Partners=Partenaires
+PartnerName=Nom du Partenaire
+SharePercent=Part %
+TotalProfit=Bénéfice Total
+ProfitShare=Part du bénéfice
+Distributions=Distributions
+AddDistribution=Ajouter Distribution
+DistributionDate=Date
+DistributionAmount=Montant
+
+# ─── reports.php
+ReportsTitle=Rapports & Statistiques
+PeriodFrom=Du
+PeriodTo=Au
+GenerateReport=Générer Rapport
+TotalRevenue=Total Chiffre d'affaires
+TotalCost=Total Coût
+GrossProfit=Marge Brute
+NetProfit=Bénéfice Net
+MarginPercent=Marge %
+TopProducts=Meilleurs Produits
+TopSuppliers=Meilleurs Fournisseurs
+TopClients=Meilleurs Clients
+GeneratedOn=Généré le
+By=par
+
+# ─── Erreurs
+ErrorSelectSupplier=Sélectionnez un fournisseur.
+ErrorSupplierNotFound=Fournisseur introuvable.
+ErrorInvoiceNotFound=Facture introuvable.
+ErrorCannotPayDraft=Impossible: la facture est en brouillon. Validez-la d'abord.
+ErrorCreating=Erreur lors de la création
+ErrorDeleting=Erreur lors de la suppression
+SuccessCreated=Créé avec succès.
+SuccessDeleted=Supprimé avec succès.
+SuccessValidated=Validé avec succès.
+ConfirmDelete=Voulez-vous vraiment supprimer ?
+ConfirmDeleteProduct=Voulez-vous vraiment supprimer ce produit de la facture ?
+ConfirmDeleteExpense=Voulez-vous supprimer cette dépense ?
+ConfirmDeletePayment=Supprimer ?
+NoData=Aucune donnée disponible

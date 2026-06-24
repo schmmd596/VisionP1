@@ -39,9 +39,10 @@ if (!$account_id) {
 	exit;
 }
 
-// Optional date filters (HTML date input format: YYYY-MM-DD)
+// Optional filters
 $date_from_str = GETPOST('date_from', 'alpha');
 $date_to_str   = GETPOST('date_to',   'alpha');
+$reference     = GETPOST('reference', 'alpha');
 
 $date_from_ts = null;
 $date_to_ts   = null;
@@ -62,6 +63,9 @@ if ($date_from_ts !== null) {
 }
 if ($date_to_ts !== null) {
 	$sql .= " AND b.dateo <= '".$db->idate($date_to_ts)."'";
+}
+if (!empty($reference)) {
+	$sql .= " AND b.label LIKE '%".$db->escape($reference)."%'";
 }
 $sql .= " ORDER BY b.dateo DESC, b.rowid DESC";
 $sql .= " LIMIT 300";

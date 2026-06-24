@@ -1,0 +1,234 @@
+# Module Exportation - English (en_US) Translation
+
+ExportationDescription=Advanced Import/Export Management, CBM, Offset and Client Profiling
+
+# Navigation
+SellerDashboard=Dashboard
+SupplierInvoice=Purchase File
+ShipmentCard=Imports & Containers
+EmployeeDashboard=My Space
+CustomerDashboard=Client Dashboard
+Reports=Reports
+AdminEmployees=Employee Management
+UnifiedAccount=Internal Supplier
+ExternalSupplier=External Supplier
+PartnerDashboard=Partners
+
+# General
+Back=Back
+Save=Save
+Cancel=Cancel
+Delete=Delete
+Edit=Edit
+Add=Add
+Validate=Validate
+Create=Create
+Search=Search
+Filter=Filter
+Print=Print
+Actions=Actions
+Total=Total
+Status=Status
+Date=Date
+Reference=Reference
+Amount=Amount
+Currency=Currency
+Rate=Rate
+Note=Note
+Description=Description
+Type=Type
+Bank=Bank
+Details=Details
+Confirm=Confirm
+Yes=Yes
+No=No
+
+# Currencies
+MRU=Ouguiya
+RMB=Chinese Yuan
+EUR=Euro
+USD=US Dollar
+
+# supplier_invoice.php
+PurchaseFile=Purchase File — Import Invoice
+ExternalSupplierLabel=External Supplier
+NewSupplier=New Supplier
+SupplierName=Name *
+DateLabel=Date *
+ProformaRef=Proforma Ref.
+SourceCurrency=Source Currency
+RateToMRU=Rate → MRU
+CreateFile=Create
+RecentFiles=Recent Files
+MassPayment=Mass Payment
+Draft=Draft
+Validated=Validated
+Paid=Paid
+Abandoned=Abandoned
+NoFiles=No files
+
+InvoiceDetail=Invoice Detail
+Supplier=Supplier
+CurrencyAndRate=Currency & Rate
+InvoicedTotal=Invoiced Total
+EditInvoice=Edit Invoice
+FinishEditing=Finish Editing
+PrintPDF=Print PDF
+
+Products=Products
+NewProduct=New Product
+ProductLabel=Label *
+ProductRef=Ref
+CBMPerCarton=CBM/Ctn
+UnitsPerCarton=Units/Ctn
+NumberOfCartons=Nb Cartons
+Quantity=Qty
+UnitPrice=Unit Price
+LineTotal=Total
+Shipping=Shipping
+AutoQty=auto
+Shipped=Shipped
+NotYetShipped=Pending
+PartiallyShipped=Partial
+NotApplicable=N/A
+
+Expenses=Expenses
+ExpenseForSupplier=Supplier
+ExpenseForUs=For Us
+ExpenseDescription=For supplier (in invoice) or for us (debited from bank on validate)
+TotalExpenses=Total Expenses
+TotalLocal=Total (MRU)
+ExpenseTarget=Target
+SelectBank=-- Bank --
+
+ExpensesManagement=Expense Management
+MyExpenses=My Expenses
+ExpenseCreated=Expense created successfully
+ExpenseSubmitted=Expense submitted for validation
+ExpenseValidated=Expense validated
+ExpenseRefused=Expense refused
+PendingExpenses=Pending Expenses
+ValidatedExpenses=Validated Expenses
+RefusedExpenses=Refused Expenses
+ExpenseAmount=Amount
+ExpenseDate=Expense Date
+ExpenseCategory=Category
+ExpenseStatus=Status
+ExpenseActions=Actions
+CreateExpense=Create Expense
+AddExpense=Add Expense
+ValidateExpense=Validate
+RefuseExpense=Refuse
+SubmitExpense=Submit
+PendingStatus=Pending
+ValidatedStatus=Validated
+RefusedStatus=Refused
+Transport=Transport
+Meals=Meals
+Office=Office
+OtherExpense=Other
+NoExpense=No expenses
+ValidatedTotal=Total validated expenses
+
+Payments=Payments
+EachPaymentHasRate=Each payment has its own exchange rate
+Remaining=Remaining
+Settled=Settled
+PaymentDate=Date
+PaymentAmount=Amount
+PaymentNote=Note...
+ValidateToAddPayments=Validate the invoice to add payments
+
+SummaryBar=Invoice Summary
+TotalProducts=Total Products
+TotalExpensesForUs=Expenses (For Us)
+NotIncludedInInvoice=Not included in invoice
+InvoiceTotal=INVOICE TOTAL
+TotalPaid=PAID
+TotalRemaining=REMAINING
+
+ShipmentTitle=Imports & Containers
+Shipments=Shipments
+Containers=Containers
+NewShipment=New Shipment
+ShipmentRef=Reference
+DepartureDate=Departure Date
+ArrivalDate=Arrival Date
+ContainerNumber=Container No.
+ShipmentStatus=Status
+InTransit=In Transit
+Delivered=Delivered
+AtPort=At Port
+Products2=Products
+TotalCBM=Total CBM
+TotalCartons=Total Cartons
+
+EmployeeDashboardTitle=My Employee Space
+MyTasks=My Tasks
+MySales=My Sales
+MyPurchases=My Purchases
+MyExpenses=My Expenses
+Salary=Salary
+Advance=Advance
+Balance=Balance
+Month=Month
+TotalSales=Total Sales
+TotalPurchases=Total Purchases
+Commission=Commission
+NetSalary=Net Salary
+
+EmployeesManagement=Employee Management
+Employee=Employee
+NewEmployee=New Employee
+EmployeeName=Employee Name
+EmployeeRole=Role
+FixedSalary=Fixed Salary
+CommissionRate=Commission Rate
+HireDate=Hire Date
+SalaryHistory=Salary History
+AddSalary=Add Salary
+AddAdvance=Add Advance
+SalaryMonth=Month
+SalaryAmount=Salary Amount
+AdvanceAmount=Advance Amount
+PaymentDate2=Payment Date
+
+Partners=Partners
+PartnerName=Partner Name
+SharePercent=Share %
+TotalProfit=Total Profit
+ProfitShare=Profit Share
+Distributions=Distributions
+AddDistribution=Add Distribution
+DistributionDate=Date
+DistributionAmount=Amount
+
+ReportsTitle=Reports & Statistics
+PeriodFrom=From
+PeriodTo=To
+GenerateReport=Generate Report
+TotalRevenue=Total Revenue
+TotalCost=Total Cost
+GrossProfit=Gross Profit
+NetProfit=Net Profit
+MarginPercent=Margin %
+TopProducts=Top Products
+TopSuppliers=Top Suppliers
+TopClients=Top Clients
+GeneratedOn=Generated on
+By=by
+
+ErrorSelectSupplier=Please select a supplier.
+ErrorSupplierNotFound=Supplier not found.
+ErrorInvoiceNotFound=Invoice not found.
+ErrorCannotPayDraft=Cannot pay: invoice is a draft. Validate it first.
+ErrorCreating=Error while creating
+ErrorDeleting=Error while deleting
+SuccessCreated=Created successfully.
+SuccessDeleted=Deleted successfully.
+SuccessValidated=Validated successfully.
+ConfirmDelete=Are you sure you want to delete?
+ConfirmDeleteProduct=Are you sure you want to remove this product from the invoice?
+ConfirmDeleteExpense=Delete this expense?
+ConfirmDeletePayment=Delete?
+NoData=No data available

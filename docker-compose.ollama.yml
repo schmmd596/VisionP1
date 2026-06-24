@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # 🆓 Ollama - Local LLM Server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tafkir-ollama
+
+    # Ports
+    ports:
+      - "11434:11434"
+
+    # Volumes for model persistence
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./ollama-entrypoint.sh:/ollama-entrypoint.sh:ro
+
+    # Environment
+    environment:
+      # GPU support (if available)
+      # - NVIDIA_VISIBLE_DEVICES=all
+      # - CUDA_VISIBLE_DEVICES=0
+
+      # CPU only (default)
+      - OLLAMA_SKIP_CUDA=1
+
+      # Memory limits
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_GPU_MEMORY=4096  # 4GB
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 6G
+        reservations:
+          cpus: '1'
+          memory: 4G
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+    # Network
+    networks:
+      - tafkir-network
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ollama-data:
+    driver: local
+
+networks:
+  tafkir-network:
+    driver: bridge
